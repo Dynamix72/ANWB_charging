@@ -34,25 +34,37 @@ class AnwbCoordinator(
             ),
         )
 
-    async def _async_update_data(self):
+ async def _async_update_data(self):
 
-        tracker = self.hass.states.get(
-            self.tracker_id
+    tracker = self.hass.states.get(
+        self.tracker_id
+    )
+
+    if tracker is None:
+        _LOGGER.error(
+            "Tracker %s niet gevonden",
+            self.tracker_id,
         )
+        return {"value": []}
 
-        if tracker is None:
-            return {"value": []}
+    lat = tracker.attributes.get("latitude")
+    lon = tracker.attributes.get("longitude")
 
-        lat = tracker.attributes.get(
-            "latitude"
-        )
+    _LOGGER.warning(
+        "ANWB GPS lat=%s lon=%s",
+        lat,
+        lon,
+    )
 
-        lon = tracker.attributes.get(
-            "longitude"
-        )
+    data = await self.api.get_chargers(
+        lat,
+        lon,
+        self.radius,
+    )
 
-        return await self.api.get_chargers(
-            lat,
-            lon,
-            self.radius,
-        )
+    _LOGGER.warning(
+        "ANWB RESPONSE=%s",
+        data,
+    )
+
+    return data
