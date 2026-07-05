@@ -35,26 +35,26 @@ class CheapestChargerSensor(
         self,
         coordinator,
     ):
-
         super().__init__(coordinator)
 
         self._attr_name = "ANWB Cheapest Charger"
         self._attr_unique_id = "anwb_cheapest"
 
     @property
-    def available(self):
-        return (
-            self.coordinator.last_update_success
-            and self.coordinator.data is not None
-        )
-
-    @property
     def native_value(self):
+
+        if not self.coordinator.data:
+            return "Geen data"
 
         chargers = self.coordinator.data.get(
             "value",
             []
         )
+
+        chargers = [
+            c for c in chargers
+            if c.get("price") is not None
+        ]
 
         if not chargers:
             return "Geen laadpalen"
@@ -62,25 +62,27 @@ class CheapestChargerSensor(
         cheapest = min(
             chargers,
             key=lambda c: float(
-                c.get("price", {}).get(
-                    "price",
-                    999
-                )
+                c["price"]["price"]
             )
         )
 
-        return cheapest.get(
-            "title",
-            "Onbekend"
-        )
+        return cheapest["title"]
 
     @property
     def extra_state_attributes(self):
+
+        if not self.coordinator.data:
+            return {}
 
         chargers = self.coordinator.data.get(
             "value",
             []
         )
+
+        chargers = [
+            c for c in chargers
+            if c.get("price") is not None
+        ]
 
         if not chargers:
             return {}
@@ -88,10 +90,7 @@ class CheapestChargerSensor(
         cheapest = min(
             chargers,
             key=lambda c: float(
-                c.get("price", {}).get(
-                    "price",
-                    999
-                )
+                c["price"]["price"]
             )
         )
 
@@ -118,7 +117,6 @@ class ChargerCountSensor(
         self,
         coordinator,
     ):
-
         super().__init__(coordinator)
 
         self._attr_name = "ANWB Charger Count"
@@ -126,14 +124,10 @@ class ChargerCountSensor(
         self._attr_icon = "mdi:ev-station"
 
     @property
-    def available(self):
-        return (
-            self.coordinator.last_update_success
-            and self.coordinator.data is not None
-        )
-
-    @property
     def native_value(self):
+
+        if not self.coordinator.data:
+            return 0
 
         return len(
             self.coordinator.data.get(
