@@ -1,6 +1,5 @@
 DOMAIN = "anwb_charging"
 
-CONF_API_KEY = "api_key"
 CONF_DEVICE_TRACKER = "device_tracker"
 CONF_RADIUS = "radius"
 
