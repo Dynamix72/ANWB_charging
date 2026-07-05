@@ -9,9 +9,8 @@ from .api import AnwbApi
 
 _LOGGER = logging.getLogger(__name__)
 
-class AnwbCoordinator(
-    DataUpdateCoordinator
-):
+
+class AnwbCoordinator(DataUpdateCoordinator):
 
     def __init__(
         self,
@@ -27,44 +26,42 @@ class AnwbCoordinator(
 
         super().__init__(
             hass,
-            logger= _LOGGER,
+            logger=_LOGGER,
             name="ANWB Charging",
-            update_interval=timedelta(
-                minutes=5
-            ),
+            update_interval=timedelta(minutes=5),
         )
 
- async def _async_update_data(self):
+    async def _async_update_data(self):
 
-    tracker = self.hass.states.get(
-        self.tracker_id
-    )
-
-    if tracker is None:
-        _LOGGER.error(
-            "Tracker %s niet gevonden",
-            self.tracker_id,
+        tracker = self.hass.states.get(
+            self.tracker_id
         )
-        return {"value": []}
 
-    lat = tracker.attributes.get("latitude")
-    lon = tracker.attributes.get("longitude")
+        if tracker is None:
+            _LOGGER.error(
+                "Tracker %s niet gevonden",
+                self.tracker_id,
+            )
+            return {"value": []}
 
-    _LOGGER.warning(
-        "ANWB GPS lat=%s lon=%s",
-        lat,
-        lon,
-    )
+        lat = tracker.attributes.get("latitude")
+        lon = tracker.attributes.get("longitude")
 
-    data = await self.api.get_chargers(
-        lat,
-        lon,
-        self.radius,
-    )
+        _LOGGER.warning(
+            "ANWB GPS lat=%s lon=%s",
+            lat,
+            lon,
+        )
 
-    _LOGGER.warning(
-        "ANWB RESPONSE=%s",
-        data,
-    )
+        data = await self.api.get_chargers(
+            lat,
+            lon,
+            self.radius,
+        )
 
-    return data
+        _LOGGER.warning(
+            "ANWB RESPONSE=%s",
+            data,
+        )
+
+        return data
