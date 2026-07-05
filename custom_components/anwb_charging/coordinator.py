@@ -7,7 +7,9 @@ from homeassistant.helpers.update_coordinator import (
 from .api import AnwbApi
 
 
-class AnwbCoordinator(DataUpdateCoordinator):
+class AnwbCoordinator(
+    DataUpdateCoordinator
+):
 
     def __init__(
         self,
@@ -17,15 +19,17 @@ class AnwbCoordinator(DataUpdateCoordinator):
     ):
 
         self.hass = hass
-        self.api = AnwbApi()
         self.tracker_id = tracker_id
         self.radius = radius
+        self.api = AnwbApi()
 
         super().__init__(
             hass,
             logger=None,
             name="ANWB Charging",
-            update_interval=timedelta(minutes=5),
+            update_interval=timedelta(
+                minutes=5
+            ),
         )
 
     async def _async_update_data(self):
@@ -34,8 +38,16 @@ class AnwbCoordinator(DataUpdateCoordinator):
             self.tracker_id
         )
 
-        lat = tracker.attributes.get("latitude")
-        lon = tracker.attributes.get("longitude")
+        if tracker is None:
+            return {"value": []}
+
+        lat = tracker.attributes.get(
+            "latitude"
+        )
+
+        lon = tracker.attributes.get(
+            "longitude"
+        )
 
         return await self.api.get_chargers(
             lat,
