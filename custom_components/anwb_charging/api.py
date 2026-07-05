@@ -23,10 +23,10 @@ class AnwbApi:
         )
 
         bbox = (
-            f"{lon - lon_delta},"
             f"{lat - lat_delta},"
-            f"{lon + lon_delta},"
-            f"{lat + lat_delta}"
+            f"{lon - lon_delta},"
+            f"{lat + lat_delta},"
+            f"{lon + lon_delta}"
         )
 
         params = {
