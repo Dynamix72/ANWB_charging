@@ -12,13 +12,12 @@ class AnwbCoordinator(DataUpdateCoordinator):
     def __init__(
         self,
         hass,
-        api_key,
         tracker_id,
         radius,
     ):
 
         self.hass = hass
-        self.api = AnwbApi(api_key)
+        self.api = AnwbApi()
         self.tracker_id = tracker_id
         self.radius = radius
 
