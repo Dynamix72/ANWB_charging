@@ -3,11 +3,10 @@
     "step": {
       "user": {
         "title": "ANWB Charging",
-        "description": "Configure the ANWB charging integration",
+        "description": "Configure ANWB Charging",
         "data": {
-          "api_key": "ANWB API Key",
-          "device_tracker": "GPS device tracker",
-          "radius": "Search radius (km)"
+          "device_tracker": "Device Tracker",
+          "radius": "Radius (km)"
         }
       }
     }
