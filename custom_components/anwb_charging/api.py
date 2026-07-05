@@ -1,36 +1,33 @@
-from math import radians, cos
+from math import cos
+from math import radians
 
 import aiohttp
 
 
-def create_bbox(lat, lon, km):
-
-    lat_delta = km / 111.0
-    lon_delta = km / (111.0 * cos(radians(lat)))
-
-    return (
-        lon - lon_delta,
-        lat - lat_delta,
-        lon + lon_delta,
-        lat + lat_delta,
-    )
-
-
-
 class AnwbApi:
 
-    def __init__(self):
-        pass
+    async def get_chargers(
+        self,
+        lat,
+        lon,
+        radius,
+    ):
 
-    async def get_chargers(self, lat, lon, radius):
+        lat_delta = radius / 111.0
+        lon_delta = radius / (
+            111.0 * cos(radians(lat))
+        )
 
-        bbox = create_bbox(lat, lon, radius)
+        bbox = (
+            f"{lon-lon_delta},"
+            f"{lat-lat_delta},"
+            f"{lon+lon_delta},"
+            f"{lat+lat_delta}"
+        )
 
         params = {
-            "bounding-box-filter":
-                f"{bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]}",
-            "type-filter":
-                "CHARGING_LOCATION",
+            "bounding-box-filter": bbox,
+            "type-filter": "CHARGING_LOCATION",
         }
 
         async with aiohttp.ClientSession() as session:
