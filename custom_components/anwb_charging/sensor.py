@@ -1,10 +1,7 @@
-from homeassistant.components.sensor import (
-    SensorEntity,
-)
+from homeassistant.components.sensor import SensorEntity
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .coordinator import (
-    AnwbCoordinator,
-)
+from .coordinator import AnwbCoordinator
 
 
 async def async_setup_entry(
@@ -31,7 +28,8 @@ async def async_setup_entry(
 
 
 class CheapestChargerSensor(
-    SensorEntity
+    CoordinatorEntity,
+    SensorEntity,
 ):
 
     def __init__(
@@ -39,32 +37,30 @@ class CheapestChargerSensor(
         coordinator,
     ):
 
-        self.coordinator = coordinator
+        super().__init__(coordinator)
+
+        self._attr_name = "ANWB Cheapest Charger"
+        self._attr_unique_id = "anwb_cheapest"
 
     @property
-    def name(self):
-        return "ANWB Cheapest Charger"
+    def native_value(self):
 
-    @property
-    def unique_id(self):
-        return "anwb_cheapest"
+        if not self.coordinator.data:
+            return "Geen data"
 
-    @property
-    def state(self):
-
-        chargers = (
-            self.coordinator.data.get(
-                "value",
-                [],
-            )
+        chargers = self.coordinator.data.get(
+            "value",
+            []
         )
 
-        if not chargers:
-            return None
+        if len(chargers) == 0:
+            return "Geen laadpalen"
 
         cheapest = min(
             chargers,
-            key=lambda x: x["price"]["price"]
+            key=lambda c: float(
+                c["price"]["price"]
+            )
         )
 
         return cheapest["title"]
@@ -72,19 +68,32 @@ class CheapestChargerSensor(
     @property
     def extra_state_attributes(self):
 
-        chargers = (
-            self.coordinator.data.get(
-                "value",
-                [],
-            )
+        if not self.coordinator.data:
+            return {}
+
+        chargers = self.coordinator.data.get(
+            "value",
+            []
         )
 
-        if not chargers:
+        if len(chargers) == 0:
             return {}
 
         cheapest = min(
             chargers,
-            key=lambda x: x["price"]["price"]
+            key=lambda c: float(
+                c["price"]["price"]
+            )
         )
 
-        return cheapest
+        return {
+            "charger_count": len(chargers),
+            "price_per_kwh": cheapest["price"]["price"],
+            "currency": cheapest["price"]["currency"],
+            "latitude": cheapest["coordinates"]["latitude"],
+            "longitude": cheapest["coordinates"]["longitude"],
+            "street": cheapest["address"]["streetAddress"],
+            "postal_code": cheapest["address"]["postalCode"],
+            "city": cheapest["address"]["city"],
+            "full_data": cheapest,
+        }
