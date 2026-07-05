@@ -16,10 +16,11 @@ def create_bbox(lat, lon, km):
     )
 
 
+
 class AnwbApi:
 
-    def __init__(self, api_key):
-        self.api_key = api_key
+    def __init__(self):
+        pass
 
     async def get_chargers(self, lat, lon, radius):
 
@@ -32,16 +33,11 @@ class AnwbApi:
                 "CHARGING_LOCATION",
         }
 
-        headers = {
-            "apikey": self.api_key
-        }
-
         async with aiohttp.ClientSession() as session:
 
             async with session.get(
                 "https://api.anwb.nl/routing/points-of-interest/v3/all",
                 params=params,
-                headers=headers,
             ) as response:
 
                 return await response.json()
