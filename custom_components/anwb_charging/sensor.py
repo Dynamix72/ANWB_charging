@@ -11,7 +11,6 @@ async def async_setup_entry(
 
     coordinator = AnwbCoordinator(
         hass,
-        entry.data["api_key"],
         entry.data["device_tracker"],
         entry.data["radius"],
     )
