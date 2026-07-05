@@ -1,4 +1,5 @@
 from datetime import timedelta
+import logging
 
 from homeassistant.helpers.update_coordinator import (
     DataUpdateCoordinator,
@@ -6,6 +7,7 @@ from homeassistant.helpers.update_coordinator import (
 
 from .api import AnwbApi
 
+_LOGGER = logging.getLogger(__name__)
 
 class AnwbCoordinator(
     DataUpdateCoordinator
@@ -25,7 +27,7 @@ class AnwbCoordinator(
 
         super().__init__(
             hass,
-            logger=None,
+            logger= logger=_LOGGER,
             name="ANWB Charging",
             update_interval=timedelta(
                 minutes=5
