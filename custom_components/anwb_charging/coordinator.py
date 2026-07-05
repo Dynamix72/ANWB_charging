@@ -27,7 +27,7 @@ class AnwbCoordinator(
 
         super().__init__(
             hass,
-            logger= logger=_LOGGER,
+            logger= _LOGGER,
             name="ANWB Charging",
             update_interval=timedelta(
                 minutes=5
