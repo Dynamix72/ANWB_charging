@@ -10,7 +10,7 @@ from homeassistant.helpers.selector import (
     NumberSelector,
     NumberSelectorConfig,
     NumberSelectorMode,
-    TextSelector,
+    TextSelector
 )
 
 from .const import (
