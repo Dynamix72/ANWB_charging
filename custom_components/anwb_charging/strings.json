@@ -5,7 +5,6 @@
         "title": "ANWB Charging",
         "description": "Configure the ANWB charging integration",
         "data": {
-          "api_key": "ANWB API Key",
           "device_tracker": "GPS device tracker",
           "radius": "Search radius (km)"
         }
