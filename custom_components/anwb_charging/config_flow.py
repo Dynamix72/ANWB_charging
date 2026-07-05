@@ -60,10 +60,6 @@ class AnwbChargingConfigFlow(
         data_schema = vol.Schema(
             {
                 vol.Required(
-                    CONF_API_KEY
-                ): TextSelector(),
-
-                vol.Required(
                     CONF_DEVICE_TRACKER
                 ): EntitySelector(
                     EntitySelectorConfig(
