@@ -32,6 +32,20 @@ def filter_valid_chargers(chargers):
     return valid
 
 
+def sorted_chargers(data):
+
+    chargers = filter_valid_chargers(
+        data.get("value", [])
+    )
+
+    return sorted(
+        chargers,
+        key=lambda c: float(
+            c["price"]["price"]
+        )
+    )
+
+
 async def async_setup_entry(
     hass,
     entry,
@@ -46,13 +60,21 @@ async def async_setup_entry(
 
     await coordinator.async_config_entry_first_refresh()
 
-    async_add_entities(
-        [
-            CheapestChargerSensor(coordinator),
-            ChargerCountSensor(coordinator),
-            ChargerListSensor(coordinator),
-        ]
-    )
+    entities = [
+        CheapestChargerSensor(coordinator),
+        ChargerCountSensor(coordinator),
+    ]
+
+    for rank in range(1, 11):
+
+        entities.append(
+            TopChargerSensor(
+                coordinator,
+                rank,
+            )
+        )
+
+    async_add_entities(entities)
 
 
 class CheapestChargerSensor(
@@ -69,59 +91,46 @@ class CheapestChargerSensor(
     @property
     def native_value(self):
 
-        chargers = filter_valid_chargers(
-            self.coordinator.data.get(
-                "value",
-                []
-            )
+        chargers = sorted_chargers(
+            self.coordinator.data
         )
 
         if not chargers:
             return "Geen laadpalen"
 
-        cheapest = min(
-            chargers,
-            key=lambda c: float(
-                c["price"]["price"]
-            )
-        )
-
-        return cheapest["title"]
+        return chargers[0]["title"]
 
     @property
     def extra_state_attributes(self):
 
-        chargers = filter_valid_chargers(
-            self.coordinator.data.get(
-                "value",
-                []
-            )
+        chargers = sorted_chargers(
+            self.coordinator.data
         )
 
         if not chargers:
             return {}
 
-        cheapest = min(
-            chargers,
-            key=lambda c: float(
-                c["price"]["price"]
-            )
-        )
+        cheapest = chargers[0]
 
         return {
-            "charger_count": len(chargers),
-            "price_per_kwh": cheapest["price"]["price"],
-            "currency": cheapest["price"]["currency"],
-            "street": cheapest["address"]["streetAddress"],
-            "postal_code": cheapest["address"]["postalCode"],
-            "city": cheapest["address"]["city"],
+            "price_per_kwh":
+                cheapest["price"]["price"],
+            "currency":
+                cheapest["price"]["currency"],
+            "street":
+                cheapest["address"]["streetAddress"],
+            "postal_code":
+                cheapest["address"]["postalCode"],
+            "city":
+                cheapest["address"]["city"],
             "full_address":
                 f"{cheapest['address']['streetAddress']}, "
                 f"{cheapest['address']['postalCode']} "
                 f"{cheapest['address']['city']}",
-            "latitude": cheapest["coordinates"]["latitude"],
-            "longitude": cheapest["coordinates"]["longitude"],
-            "charger_id": cheapest["id"],
+            "latitude":
+                cheapest["coordinates"]["latitude"],
+            "longitude":
+                cheapest["coordinates"]["longitude"],
         }
 
 
@@ -140,110 +149,119 @@ class ChargerCountSensor(
     @property
     def native_value(self):
 
-        chargers = filter_valid_chargers(
-            self.coordinator.data.get(
-                "value",
-                []
-            )
+        chargers = sorted_chargers(
+            self.coordinator.data
         )
 
         return len(chargers)
 
 
-class ChargerListSensor(
+class TopChargerSensor(
     CoordinatorEntity,
     SensorEntity,
 ):
 
-    def __init__(self, coordinator):
+    def __init__(
+        self,
+        coordinator,
+        rank,
+    ):
         super().__init__(coordinator)
 
-        self._attr_name = "ANWB Charger List"
-        self._attr_unique_id = "anwb_charger_list"
-        self._attr_icon = "mdi:format-list-bulleted"
+        self.rank = rank
+
+        self._attr_name = (
+            f"ANWB Top {rank}"
+        )
+
+        self._attr_unique_id = (
+            f"anwb_top_{rank}"
+        )
+
+    def _charger(self):
+
+        chargers = sorted_chargers(
+            self.coordinator.data
+        )
+
+        index = self.rank - 1
+
+        if len(chargers) <= index:
+            return None
+
+        return chargers[index]
 
     @property
     def native_value(self):
 
-        chargers = filter_valid_chargers(
-            self.coordinator.data.get(
-                "value",
-                []
-            )
-        )
+        charger = self._charger()
 
-        chargers = sorted(
-            chargers,
-            key=lambda c: float(
-                c["price"]["price"]
-            )
-        )[:10]
+        if charger is None:
+            return "Geen laadpaal"
 
-        return len(chargers)
+        return charger["title"]
 
     @property
     def extra_state_attributes(self):
 
-        chargers = filter_valid_chargers(
-            self.coordinator.data.get(
-                "value",
-                []
-            )
-        )
+        charger = self._charger()
 
-        chargers = sorted(
-            chargers,
-            key=lambda c: float(
-                c["price"]["price"]
-            )
-        )[:10]
+        if charger is None:
+            return {}
 
-        result = []
+        status = "AVAILABLE"
 
-        for rank, charger in enumerate(
-            chargers,
-            start=1,
+        for evse in charger.get(
+            "electricVehicleSupplyEquipment",
+            []
         ):
 
-            status = "AVAILABLE"
-
-            for evse in charger.get(
-                "electricVehicleSupplyEquipment",
-                []
+            if (
+                evse.get("status")
+                == "CHARGING"
             ):
-
-                if evse.get("status") == "CHARGING":
-                    status = "CHARGING"
-                    break
-
-            result.append(
-                {
-                    "rank": rank,
-                    "name": charger["title"],
-                    "address": charger["address"]["streetAddress"],
-                    "postal_code": charger["address"]["postalCode"],
-                    "city": charger["address"]["city"],
-                    "full_address":
-                        f"{charger['address']['streetAddress']}, "
-                        f"{charger['address']['postalCode']} "
-                        f"{charger['address']['city']}",
-                    "price_per_kwh":
-                        charger["price"]["price"],
-                    "currency":
-                        charger["price"]["currency"],
-                    "status":
-                        status,
-                    "icon":
-                        "mdi:lightning-bolt"
-                        if status == "CHARGING"
-                        else "mdi:ev-station",
-                    "latitude":
-                        charger["coordinates"]["latitude"],
-                    "longitude":
-                        charger["coordinates"]["longitude"],
-                }
-            )
+                status = "CHARGING"
+                break
 
         return {
-            "chargers": result
+            "rank": self.rank,
+
+            "price_per_kwh":
+                charger["price"]["price"],
+
+            "currency":
+                charger["price"]["currency"],
+
+            "street":
+                charger["address"][
+                    "streetAddress"
+                ],
+
+            "postal_code":
+                charger["address"][
+                    "postalCode"
+                ],
+
+            "city":
+                charger["address"][
+                    "city"
+                ],
+
+            "full_address":
+                f"{charger['address']['streetAddress']}, "
+                f"{charger['address']['postalCode']} "
+                f"{charger['address']['city']}",
+
+            "status":
+                status,
+
+            "latitude":
+                charger["coordinates"][
+                    "latitude"
+                ],
+
+            "longitude":
+                charger["coordinates"][
+                    "longitude"
+                ],
         }
