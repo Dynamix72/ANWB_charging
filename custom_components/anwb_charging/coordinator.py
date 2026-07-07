@@ -28,7 +28,7 @@ class AnwbCoordinator(DataUpdateCoordinator):
             hass,
             logger=_LOGGER,
             name="ANWB Charging",
-            update_interval=timedelta(minutes=5),
+            update_interval=timedelta(hours=1),
         )
 
     async def _async_update_data(self):
