@@ -46,6 +46,96 @@ def sorted_chargers(data):
     )
 
 
+def extract_charger_info(charger):
+
+    max_power_kw = 0
+
+    total_points = 0
+    available_points = 0
+
+    energy_price = None
+    energy_display_text = []
+
+    session_price = None
+    session_display_text = []
+
+    for evse in charger.get(
+        "electricVehicleSupplyEquipment",
+        []
+    ):
+
+        total_points += 1
+
+        if evse.get("status") == "AVAILABLE":
+            available_points += 1
+
+        for connector in evse.get(
+            "connectors",
+            []
+        ):
+
+            max_power_kw = max(
+                max_power_kw,
+                connector.get(
+                    "maxPowerInKW",
+                    0
+                )
+            )
+
+            for tariff in connector.get(
+                "prices",
+                []
+            ):
+
+                for component in tariff.get(
+                    "priceComponents",
+                    []
+                ):
+
+                    code = component.get("code")
+
+                    if (
+                        code == "ENERGY"
+                        and energy_price is None
+                    ):
+                        energy_price = component.get(
+                            "value"
+                        )
+
+                        energy_display_text = (
+                            component.get(
+                                "displayText",
+                                []
+                            )
+                        )
+
+                    if (
+                        code == "SESSION"
+                        and session_price is None
+                    ):
+                        session_price = component.get(
+                            "value"
+                        )
+
+                        session_display_text = (
+                            component.get(
+                                "displayText",
+                                []
+                            )
+                        )
+
+    return {
+        "max_power_kw": max_power_kw,
+        "charge_points_total": total_points,
+        "charge_points_available": available_points,
+        "availability_text": f"{available_points}/{total_points}",
+        "energy_price": energy_price,
+        "energy_display_text": energy_display_text,
+        "session_price": session_price,
+        "session_display_text": session_display_text,
+    }
+
+
 async def async_setup_entry(
     hass,
     entry,
@@ -99,39 +189,6 @@ class CheapestChargerSensor(
             return "Geen laadpalen"
 
         return chargers[0]["title"]
-
-    @property
-    def extra_state_attributes(self):
-
-        chargers = sorted_chargers(
-            self.coordinator.data
-        )
-
-        if not chargers:
-            return {}
-
-        cheapest = chargers[0]
-
-        return {
-            "price_per_kwh":
-                cheapest["price"]["price"],
-            "currency":
-                cheapest["price"]["currency"],
-            "street":
-                cheapest["address"]["streetAddress"],
-            "postal_code":
-                cheapest["address"]["postalCode"],
-            "city":
-                cheapest["address"]["city"],
-            "full_address":
-                f"{cheapest['address']['streetAddress']}, "
-                f"{cheapest['address']['postalCode']} "
-                f"{cheapest['address']['city']}",
-            "latitude":
-                cheapest["coordinates"]["latitude"],
-            "longitude":
-                cheapest["coordinates"]["longitude"],
-        }
 
 
 class ChargerCountSensor(
@@ -223,11 +280,37 @@ class TopChargerSensor(
                 status = "CHARGING"
                 break
 
+        info = extract_charger_info(
+            charger
+        )
+
         return {
+
             "rank": self.rank,
 
             "price_per_kwh":
-                charger["price"]["price"],
+                info["energy_price"],
+
+            "price_display_text":
+                info["energy_display_text"],
+
+            "session_price":
+                info["session_price"],
+
+            "session_display_text":
+                info["session_display_text"],
+
+            "max_power_kw":
+                info["max_power_kw"],
+
+            "charge_points_total":
+                info["charge_points_total"],
+
+            "charge_points_available":
+                info["charge_points_available"],
+
+            "availability_text":
+                info["availability_text"],
 
             "currency":
                 charger["price"]["currency"],
@@ -254,6 +337,11 @@ class TopChargerSensor(
 
             "status":
                 status,
+
+            "icon":
+                "mdi:lightning-bolt"
+                if status == "CHARGING"
+                else "mdi:ev-station",
 
             "latitude":
                 charger["coordinates"][
