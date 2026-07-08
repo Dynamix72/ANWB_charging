@@ -31,12 +31,65 @@ def filter_valid_chargers(chargers):
 
     return valid
 
-
-def sorted_chargers(data):
+def sorted_chargers(
+    data,
+    hass=None,
+):
 
     chargers = filter_valid_chargers(
         data.get("value", [])
     )
+
+    if hass:
+
+        helper = hass.states.get(
+            "input_select.anwb_lader_filter"
+        )
+
+        if helper:
+
+            mode = helper.state
+
+            filtered = []
+
+            for charger in chargers:
+
+                info = extract_charger_info(
+                    charger
+                )
+
+                power = info[
+                    "max_power_kw"
+                ]
+
+                if mode == "AC laders":
+
+                    if power < 50:
+                        filtered.append(
+                            charger
+                        )
+
+                elif mode == "Snelladers":
+
+                    if power >= 50:
+                        filtered.append(
+                            charger
+                        )
+
+                elif mode == "Ultrasnelladers":
+
+                    if power >= 150:
+                        filtered.append(
+                            charger
+                        )
+
+                else:
+
+                    filtered.append(
+                        charger
+                    )
+
+            chargers = filtered
 
     return sorted(
         chargers,
@@ -44,7 +97,6 @@ def sorted_chargers(data):
             c["price"]["price"]
         )
     )
-
 
 def extract_charger_info(charger):
 
@@ -181,9 +233,12 @@ class CheapestChargerSensor(
     @property
     def native_value(self):
 
-        chargers = sorted_chargers(
-            self.coordinator.data
-        )
+
+       chargers = sorted_chargers(
+          self.coordinator.data,
+          self.coordinator.hass,
+       )
+
 
         if not chargers:
             return "Geen laadpalen"
@@ -206,9 +261,12 @@ class ChargerCountSensor(
     @property
     def native_value(self):
 
+
         chargers = sorted_chargers(
-            self.coordinator.data
+            self.coordinator.data,
+            self.coordinator.hass,
         )
+       
 
         return len(chargers)
 
@@ -237,8 +295,10 @@ class TopChargerSensor(
 
     def _charger(self):
 
+        
         chargers = sorted_chargers(
-            self.coordinator.data
+            self.coordinator.data,
+            self.coordinator.hass,
         )
 
         index = self.rank - 1
