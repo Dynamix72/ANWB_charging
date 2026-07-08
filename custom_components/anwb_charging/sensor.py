@@ -240,10 +240,10 @@ class CheapestChargerSensor(
        )
 
 
-        if not chargers:
-            return "Geen laadpalen"
+       if not chargers:
+           return "Geen laadpalen"
 
-        return chargers[0]["title"]
+       return chargers[0]["title"]
 
 
 class ChargerCountSensor(
