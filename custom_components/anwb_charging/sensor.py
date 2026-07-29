@@ -451,3 +451,64 @@ class RouteTestSensor(
             "status": "Test sensor actief"
         }
 
+class RouteDistanceSensor(
+    SensorEntity,
+):
+
+    def __init__(
+        self,
+        route_coordinator,
+    ):
+        self.coordinator = route_coordinator
+
+        self._attr_name = (
+            "ANWB Route Distance"
+        )
+
+        self._attr_unique_id = (
+            "anwb_route_distance"
+        )
+
+    @property
+    def native_value(self):
+
+        route = (
+            self.coordinator.data.get(
+                "route"
+            )
+        )
+
+        if not route:
+            return 0
+
+        return route[
+            "distance_km"
+        ]
+
+    @property
+    def extra_state_attributes(self):
+
+        route = (
+            self.coordinator.data.get(
+                "route"
+            )
+        )
+
+        if not route:
+            return {}
+
+        return {
+            "duration_min":
+                route["duration_min"],
+
+            "destination":
+                route["destination"],
+
+            "route_points":
+                len(
+                    route["coordinates"]
+                ),
+
+            "coordinates":
+                route["coordinates"],
+        }
