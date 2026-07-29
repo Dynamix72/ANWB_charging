@@ -119,7 +119,15 @@ class RouteCoordinator(
                 "route": None,
                 "chargers": [],
             }
-
+            
+            _LOGGER.warning(
+                "ROUTE TEST bestemming=%s "
+                "afstand=%s km "
+                "duur=%s min",
+                destination,
+                route["distance_km"],
+                route["duration_min"],
+            )
         destination = (
             destination_entity.state.strip()
         )
