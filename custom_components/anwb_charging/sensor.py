@@ -209,6 +209,10 @@ async def async_setup_entry(
         RouteTestSensor(
           coordinator
         ),
+        
+        RouteDistanceSensor(
+          coordinator
+        ),
     ]
 
     for rank in range(1, 11):
