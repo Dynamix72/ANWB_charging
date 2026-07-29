@@ -205,6 +205,10 @@ async def async_setup_entry(
     entities = [
         CheapestChargerSensor(coordinator),
         ChargerCountSensor(coordinator),
+
+        RouteTestSensor(
+          coordinator
+        ),
     ]
 
     for rank in range(1, 11):
@@ -413,3 +417,37 @@ class TopChargerSensor(
                     "longitude"
                 ],
         }
+
+class RouteTestSensor(
+    CoordinatorEntity,
+    SensorEntity,
+):
+
+    def __init__(
+        self,
+        coordinator,
+    ):
+        super().__init__(
+            coordinator
+        )
+
+        self._attr_name = (
+            "ANWB Route Test"
+        )
+
+        self._attr_unique_id = (
+            "anwb_route_test"
+        )
+
+    @property
+    def native_value(self):
+
+        return "Route API OK"
+
+    @property
+    def extra_state_attributes(self):
+
+        return {
+            "status": "Test sensor actief"
+        }
+`
