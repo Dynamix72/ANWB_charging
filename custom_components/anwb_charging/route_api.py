@@ -5,11 +5,11 @@ import aiohttp
 _LOGGER = logging.getLogger(__name__)
 
 GEOCODE_URL = (
-    "https://api.openrouteservice.org/geocode/search"
+    "https://api.heigit.org/pelias/v1/search"
 )
 
 DIRECTIONS_URL = (
-    "https://api.openrouteservice.org/"
+    "https://api.heigit.org/openrouteservice/"
     "v2/directions/driving-car/geojson"
 )
 
