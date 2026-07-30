@@ -55,44 +55,44 @@ class RouteApi:
 
                 return await response.json()
 
-async def geocode(
-    self,
-    destination,
-):
-
-    params = {
-        "api_key": self.api_key,
-        "text": destination,
-        "size": 1,
-    }
-
-    _LOGGER.warning(
-        "GEOCODE bestemming=%s",
+    async def geocode(
+        self,
         destination,
-    )
-
-    data = await self._request_json(
-        "GET",
-        GEOCODE_URL,
-        params=params,
-    )
-
-    _LOGGER.warning(
-        "GEOCODE RESPONSE=%s",
-        data,
-    )
-
-    features = data.get(
-        "features",
-        []
-    )
-
-    if not features:
-
-        raise Exception(
-            f"Bestemming niet gevonden: "
-            f"{destination}"
+    ):
+    
+        params = {
+            "api_key": self.api_key,
+            "text": destination,
+            "size": 1,
+        }
+    
+        _LOGGER.warning(
+            "GEOCODE bestemming=%s",
+            destination,
         )
+    
+        data = await self._request_json(
+            "GET",
+            GEOCODE_URL,
+            params=params,
+        )
+    
+        _LOGGER.warning(
+            "GEOCODE RESPONSE=%s",
+            data,
+        )
+    
+        features = data.get(
+            "features",
+            []
+        )
+    
+        if not features:
+    
+            raise Exception(
+                f"Bestemming niet gevonden: "
+                f"{destination}"
+            )
 
     lon, lat = (
         features[0]
