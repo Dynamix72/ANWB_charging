@@ -206,14 +206,18 @@ async def async_setup_entry(
         entry.data["device_tracker"],
         entry.data["radius"],
         int(
-            hass.states.get(
-                "input_number.anwb_min_power_kw"
-            ).state
+            float(
+                hass.states.get(
+                    "input_number.anwb_min_power_kw"
+                ).state
+            )
         ),
         int(
-            hass.states.get(
-                "input_number.anwb_max_detour_km"
-            ).state
+            float(
+                hass.states.get(
+                    "input_number.anwb_max_detour_km"
+                ).state
+            )
         ),
         "ORS_API_KEY_HIER",
     )
