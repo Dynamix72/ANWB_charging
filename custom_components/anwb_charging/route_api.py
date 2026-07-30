@@ -120,5 +120,5 @@ class RouteApi:
 
         headers = {
             "Authorization": self.api_key,
-            "Content-Type":
-            
+            "Content-Type": "application/json",
+        }    
