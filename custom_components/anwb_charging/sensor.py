@@ -240,6 +240,9 @@ async def async_setup_entry(
         RouteDistanceSensor(
             route_coordinator
         ),
+        RouteGeoJsonSensor(
+            route_coordinator
+        ),
     ]
 
     for rank in range(1, 11):
