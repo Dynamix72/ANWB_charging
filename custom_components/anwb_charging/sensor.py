@@ -2,7 +2,7 @@ from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .coordinator import AnwbCoordinator
-
+from .route_coordinator import RouteCoordinator
 
 def filter_valid_chargers(chargers):
 
@@ -187,7 +187,6 @@ def extract_charger_info(charger):
         "session_display_text": session_display_text,
     }
 
-
 async def async_setup_entry(
     hass,
     entry,
@@ -202,16 +201,33 @@ async def async_setup_entry(
 
     await coordinator.async_config_entry_first_refresh()
 
+    route_coordinator = RouteCoordinator(
+        hass,
+        entry.data["device_tracker"],
+        entry.data["radius"],
+        int(
+            hass.states.get(
+                "input_number.anwb_min_power_kw"
+            ).state
+        ),
+        int(
+            hass.states.get(
+                "input_number.anwb_max_detour_km"
+            ).state
+        ),
+        "ORS_API_KEY_HIER",
+    )
+
+    await route_coordinator.async_config_entry_first_refresh()
+
     entities = [
         CheapestChargerSensor(coordinator),
         ChargerCountSensor(coordinator),
 
-        RouteTestSensor(
-          coordinator
-        ),
-        
+        RouteTestSensor(route_coordinator),
+
         RouteDistanceSensor(
-          coordinator
+            route_coordinator
         ),
     ]
 
@@ -475,19 +491,26 @@ class RouteDistanceSensor(
 
     @property
     def native_value(self):
-
-        route = (
-            self.coordinator.data.get(
-                "route"
-            )
-        )
-
-        if not route:
-            return 0
-
-        return route[
-            "distance_km"
-        ]
+    
+        return str(
+            self.coordinator.data
+        )[:255]
+    
+#    @property
+#    def native_value(self):
+#
+#        route = (
+#            self.coordinator.data.get(
+#                "route"
+#            )
+#        )
+#
+#        if not route:
+#            return 0
+#
+#        return route[
+#            "distance_km"
+#        ]
 
     @property
     def extra_state_attributes(self):
