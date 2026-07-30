@@ -226,7 +226,7 @@ async def async_setup_entry(
                 ).state
             )
         ),
-        "ors_api_key",
+        ors_api_key,
     )
 
     await route_coordinator.async_config_entry_first_refresh()
