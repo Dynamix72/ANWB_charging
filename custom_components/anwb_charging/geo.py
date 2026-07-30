@@ -219,22 +219,31 @@ def charger_is_available(
 def charger_price(
     charger,
 ):
-    """
-    Prijs uit ANWB response.
-    """
 
-    price = (
-        charger
-        .get("price", {})
-        .get("price")
+    price_data = charger.get(
+        "price"
     )
 
-    if price is None:
+    if not price_data:
+
+        print(
+            f"GEEN PRIJS: "
+            f"{charger.get('title')}"
+        )
+
         return 999
 
     try:
-        return float(price)
+
+        return float(
+            price_data.get(
+                "price",
+                999,
+            )
+        )
+
     except Exception:
+
         return 999
 
 
