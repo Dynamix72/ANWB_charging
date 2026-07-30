@@ -289,7 +289,11 @@ class RouteCoordinator(
             "Resultaat na omrijfilter=%s",
             len(filtered),
         )
-
+        _LOGGER.warning(
+            "ROUTE RESULT route=%s chargers=%s",
+            route,
+            len(filtered),
+        )
         return {
 
             "route": route,
