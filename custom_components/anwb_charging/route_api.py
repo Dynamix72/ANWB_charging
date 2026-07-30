@@ -9,8 +9,7 @@ GEOCODE_URL = (
 )
 
 DIRECTIONS_URL = (
-    "https://api.heigit.org/openrouteservice/"
-    "v2/directions/driving-car/geojson"
+    "https://api.openrouteservice.org/v2/directions/driving-car/geojson"
 )
 
 
@@ -144,6 +143,7 @@ class RouteApi:
         )
     
         return {
+            "destination": destination,
             "distance_km": round(
                 summary["distance"] / 1000,
                 1,
@@ -157,7 +157,7 @@ class RouteApi:
                     "coordinates"
                 ],
             "geojson": data,
-        }
+         }
             
     async def calculate_detour(
         self,
