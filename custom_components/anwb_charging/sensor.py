@@ -550,3 +550,36 @@ class RouteDistanceSensor(
             "coordinates":
                 route["coordinates"],
         }
+
+class RouteGeoJsonSensor(
+    CoordinatorEntity,
+    SensorEntity,
+):
+
+    def __init__(
+        self,
+        coordinator,
+    ):
+        super().__init__(coordinator)
+
+        self._attr_name = "ANWB Route GeoJSON"
+        self._attr_unique_id = "anwb_route_geojson"
+
+    @property
+    def native_value(self):
+        return "route"
+
+    @property
+    def extra_state_attributes(self):
+
+        route = self.coordinator.data.get(
+            "route",
+            {},
+        )
+
+        return {
+            "geojson": route.get(
+                "geojson",
+                {}
+            )
+        }
