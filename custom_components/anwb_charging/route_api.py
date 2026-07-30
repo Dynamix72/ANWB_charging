@@ -55,75 +55,113 @@ class RouteApi:
 
                 return await response.json()
 
-async def geocode(
-    self,
-    destination,
-):
-
-    params = {
-        "api_key": self.api_key,
-        "text": destination,
-        "size": 1,
-    }
-
-    _LOGGER.warning(
-        "GEOCODE bestemming=%s",
-        destination,
-    )
-
-    data = await self._request_json(
-        "GET",
-        GEOCODE_URL,
-        params=params,
-    )
-
-    _LOGGER.warning(
-        "GEOCODE RESPONSE=%s",
-        data,
-    )
-
-    features = data.get(
-        "features",
-        []
-    )
-
-    if not features:
-
-        raise Exception(
-            f"Bestemming niet gevonden: "
-            f"{destination}"
-        )
-
-    lon, lat = (
-        features[0]
-        ["geometry"]
-        ["coordinates"]
-    )
-
-    _LOGGER.warning(
-        "GEOCODE RESULT "
-        "lat=%s lon=%s",
-        lat,
-        lon,
-    )
-
-    return {
-        "latitude": lat,
-        "longitude": lon,
-    }
-
-    async def get_route(
-        self,
-        start_lat,
-        start_lon,
-        destination,
-    ):
-
-        dest = await self.geocode(
-            destination
-        )
-
-        headers = {
-            "Authorization": self.api_key,
-            "Content-Type": "application/json",
-        }    
+        async def geocode(
+            self,
+            destination,
+        ):
+        
+            params = {
+                "api_key": self.api_key,
+                "text": destination,
+                "size": 1,
+            }
+        
+            _LOGGER.warning(
+                "GEOCODE bestemming=%s",
+                destination,
+            )
+        
+            data = await self._request_json(
+                "GET",
+                GEOCODE_URL,
+                params=params,
+            )
+        
+            _LOGGER.warning(
+                "GEOCODE RESPONSE=%s",
+                data,
+            )
+        
+            features = data.get(
+                "features",
+                []
+            )
+        
+            if not features:
+        
+                raise Exception(
+                    f"Bestemming niet gevonden: "
+                    f"{destination}"
+                )
+        
+            lon, lat = (
+                features[0]
+                ["geometry"]
+                ["coordinates"]
+            )
+        
+            _LOGGER.warning(
+                "GEOCODE RESULT "
+                "lat=%s lon=%s",
+                lat,
+                lon,
+            )
+        
+            return {
+                "latitude": lat,
+                "longitude": lon,
+            }
+        async def get_route(
+            self,
+            start_lat,
+            start_lon,
+            destination,
+        ):
+        
+            dest = await self.geocode(
+                destination
+            )
+        
+            payload = {
+                "coordinates": [
+                    [start_lon, start_lat],
+                    [
+                        dest["longitude"],
+                        dest["latitude"],
+                    ],
+                ]
+            }
+        
+            headers = {
+                "Authorization": self.api_key,
+                "Content-Type": "application/json",
+            }
+        
+            data = await self._request_json(
+                "POST",
+                DIRECTIONS_URL,
+                headers=headers,
+                json=payload,
+            )
+        
+            feature = data["features"][0]
+        
+            summary = (
+                feature["properties"]["summary"]
+            )
+        
+            return {
+                "distance_km": round(
+                    summary["distance"] / 1000,
+                    1,
+                ),
+                "duration_min": round(
+                    summary["duration"] / 60,
+                    1,
+                ),
+                "coordinates":
+                    feature["geometry"][
+                        "coordinates"
+                    ],
+                "geojson": data,
+            }   
