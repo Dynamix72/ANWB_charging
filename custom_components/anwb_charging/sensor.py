@@ -4,6 +4,13 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .coordinator import AnwbCoordinator
 from .route_coordinator import RouteCoordinator
 
+import yaml
+
+with open("/config/secrets.yaml") as f:
+    secrets = yaml.safe_load(f)
+
+ors_api_key = secrets["ors_api_key"]
+
 def filter_valid_chargers(chargers):
 
     valid = []
@@ -219,7 +226,7 @@ async def async_setup_entry(
                 ).state
             )
         ),
-        "ORS_API_KEY_HIER",
+        "ors_api_key",
     )
 
     await route_coordinator.async_config_entry_first_refresh()
