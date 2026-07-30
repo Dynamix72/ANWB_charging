@@ -159,3 +159,73 @@ class RouteApi:
             "geojson": data,
         }
             
+    async def calculate_detour(
+        self,
+        start_lat,
+        start_lon,
+        charger_lat,
+        charger_lon,
+        destination,
+    ):
+    
+        direct_route = await self.get_route(
+            start_lat,
+            start_lon,
+            destination,
+        )
+    
+        dest = await self.geocode(
+            destination
+        )
+    
+        payload = {
+            "coordinates": [
+                [start_lon, start_lat],
+                [charger_lon, charger_lat],
+                [
+                    dest["longitude"],
+                    dest["latitude"],
+                ],
+            ]
+        }
+    
+        headers = {
+            "Authorization": self.api_key,
+            "Content-Type": "application/json",
+        }
+    
+        route_via_charger = await self._request_json(
+            "POST",
+            DIRECTIONS_URL,
+            headers=headers,
+            json=payload,
+        )
+    
+        summary = (
+            route_via_charger["features"][0]
+            ["properties"]["summary"]
+        )
+    
+        route_via_distance = (
+            summary["distance"] / 1000
+        )
+    
+        detour_km = round(
+            route_via_distance
+            - direct_route["distance_km"],
+            1,
+        )
+    
+        return {
+            "detour_km": detour_km,
+            "extra_minutes": round(
+                (
+                    summary["duration"]
+                    / 60
+                )
+                - direct_route[
+                    "duration_min"
+                ],
+                1,
+            ),
+        }
