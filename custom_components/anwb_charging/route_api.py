@@ -65,7 +65,16 @@ class RouteApi:
             "text": destination,
             "size": 1,
         }
+        
+        _LOGGER.warning(
+            "GEOCODE URL=%s",
+            GEOCODE_URL,
+        )
     
+        _LOGGER.warning(
+            "GEOCODE PARAMS=%s",
+            params,
+        )
         data = await self._request_json(
             "GET",
             GEOCODE_URL,
