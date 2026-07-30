@@ -5,7 +5,7 @@ import aiohttp
 _LOGGER = logging.getLogger(__name__)
 
 GEOCODE_URL = (
-    "https://api.heigit.org/pelias/v1/search"
+    "https://api.openrouteservice.org/geocode/search"
 )
 
 DIRECTIONS_URL = (
@@ -55,52 +55,62 @@ class RouteApi:
 
                 return await response.json()
 
-    async def geocode(
-        self,
+async def geocode(
+    self,
+    destination,
+):
+
+    params = {
+        "api_key": self.api_key,
+        "text": destination,
+        "size": 1,
+    }
+
+    _LOGGER.warning(
+        "GEOCODE bestemming=%s",
         destination,
-    ):
+    )
 
-        headers = {
-            "Authorization": self.api_key,
-        }
+    data = await self._request_json(
+        "GET",
+        GEOCODE_URL,
+        params=params,
+    )
 
-        params = {
-            "text": destination,
-            "size": 1,
-        }
+    _LOGGER.warning(
+        "GEOCODE RESPONSE=%s",
+        data,
+    )
 
-        data = await self._request_json(
-            "GET",
-            GEOCODE_URL,
-            headers=headers,
-            params=params,
+    features = data.get(
+        "features",
+        []
+    )
+
+    if not features:
+
+        raise Exception(
+            f"Bestemming niet gevonden: "
+            f"{destination}"
         )
 
-        features = data.get(
-            "features",
-            []
-        )
+    lon, lat = (
+        features[0]
+        ["geometry"]
+        ["coordinates"]
+    )
 
-        if not features:
+    _LOGGER.warning(
+        "GEOCODE RESULT "
+        "lat=%s lon=%s",
+        lat,
+        lon,
+    )
 
-            raise Exception(
-                f"Bestemming niet gevonden: "
-                f"{destination}"
-            )
-
-        lon, lat = (
-            features[0]
-            ["geometry"]
-            ["coordinates"]
-        )
-
-        _LOGGER.warning(
-            "ORS bestemming=%s "
-            "lat=%s lon=%s",
-            destination,
-            lat,
-            lon,
-        )
+    return {
+        "latitude": lat,
+        "longitude": lon,
+    }
 
         return {
             "latitude": lat,
