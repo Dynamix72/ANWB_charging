@@ -1,3 +1,21 @@
+"""
+RouteCoordinator voor ANWB Charging Integration.
+
+Dit coordinator verwerkt routes naar een bestemming en zoekt de goedkoopste laadpalen
+onderweg rekening houdend met omrijafstand.
+
+Workflow:
+1. Haalt configuratie op (bestemming, max omrijafstand, ladertype)
+2. Berekent route via OpenRouteService (ORS)
+3. Haalt beschikbare laadpalen op via ANWB API
+4. Filtert laadpalen op basis van route en ladertype
+5. Berekent omrijafstand voor elke laadpaal
+6. Sorteert op prijs en omrijafstand
+7. Retourneert gefilterde en gesorteerde resultaten
+
+Updates: Geen automatische updates - alleen op knopdruk via UI
+"""
+
 from datetime import timedelta
 import logging
 
@@ -24,6 +42,7 @@ _LOGGER = logging.getLogger(__name__)
 class RouteCoordinator(
     DataUpdateCoordinator
 ):
+    """Coordinator voor route-gebaseerde laadpaalselectie met omrijfiltering."""
 
     def __init__(
         self,
@@ -34,34 +53,52 @@ class RouteCoordinator(
         min_power_kw,
         ors_api_key,
     ):
+        """Initialiseer RouteCoordinator.
+        
+        Args:
+            hass: Home Assistant instance
+            entry: Config entry met instellingen
+            tracker_id: Entity ID van device tracker (voor GPS locatie)
+            radius: Search radius in km rond huidige locatie (vast 10 km)
+            min_power_kw: Minimaal vermogen laadpaal in kW
+            ors_api_key: OpenRouteService API key voor routeberekening
+        """
 
         self.hass = hass
         self.entry = entry
 
         self.tracker_id = tracker_id
-
         self.radius = radius
-
         self.min_power_kw = min_power_kw
-
         self.ors_api_key = ors_api_key
 
+        # Initialiseer API clients
         self.anwb_api = AnwbApi(hass)
+        self.route_api = RouteApi(hass, ors_api_key)
 
-        self.route_api = RouteApi(
-            hass,
-            ors_api_key
-        )
-
+        # Geen automatische updates - coordinator wordt alleen handmatig aangeroepen
         super().__init__(
             hass,
             logger=_LOGGER,
             name="ANWB Route Charging",
-            update_interval=None,  # Geen automatische updates - alleen op knopdruk
+            update_interval=None,
         )
 
     def _get_config_value(self, key, default):
-        """Get config value from options or data."""
+        """Haal configuratiewaarde op uit options of data.
+        
+        Prioriteit:
+        1. entry.options (door gebruiker ingesteld in UI)
+        2. entry.data (initiële setup waarden)
+        3. default waarde
+        
+        Args:
+            key: Configuratiekey
+            default: Default waarde als key niet gevonden
+            
+        Returns:
+            Configuratiewaarde
+        """
         return (
             self.entry.options.get(key)
             or self.entry.data.get(key)
@@ -69,8 +106,16 @@ class RouteCoordinator(
         )
 
     async def _async_update_data(self):
+        """Voer volledige route en laadpaalanalyse uit.
+        
+        Dit is de main methode die wordt aangeroepen wanneer gebruiker
+        de "Update" knop indrukt in de UI.
+        
+        Returns:
+            Dict met route data, gefilterde laadpalen en voertuigpositie
+        """
 
-        # Get configuration from entry (can be updated via UI)
+        # Lees huidige instellingen uit configuratie
         max_detour_km = self._get_config_value(
             CONF_MAX_DETOUR_KM,
             DEFAULT_MAX_DETOUR_KM
@@ -84,22 +129,22 @@ class RouteCoordinator(
             ""
         )
 
+        # Haal huidige voertuigpositie op via device tracker
         tracker = self.hass.states.get(
             self.tracker_id
         )
 
         if tracker is None:
-
             _LOGGER.error(
                 "Tracker %s niet gevonden",
                 self.tracker_id,
             )
-
             return {
                 "route": None,
                 "chargers": [],
             }
 
+        # Extraheer GPS coordinaten
         vehicle_lat = (
             tracker.attributes.get(
                 "latitude"
@@ -116,22 +161,19 @@ class RouteCoordinator(
             vehicle_lat is None
             or vehicle_lon is None
         ):
-
             _LOGGER.error(
                 "GPS positie ontbreekt"
             )
-
             return {
                 "route": None,
                 "chargers": [],
             }
 
+        # Valideer bestemming is ingesteld
         if not destination:
-
             _LOGGER.warning(
                 "Geen bestemming ingevuld"
             )
-
             return {
                 "route": None,
                 "chargers": [],
@@ -144,6 +186,7 @@ class RouteCoordinator(
             charger_type,
         )
 
+        # STAP 1: Bereken route via OpenRouteService
         route = await (
             self.route_api.get_route(
                 vehicle_lat,
@@ -158,6 +201,7 @@ class RouteCoordinator(
             route["duration_min"],
         )
 
+        # STAP 2: Haal laadpalen op van ANWB
         anwb_data = await (
             self.anwb_api.get_chargers(
                 vehicle_lat,
@@ -176,6 +220,12 @@ class RouteCoordinator(
             len(chargers),
         )
 
+        # STAP 3: Filter laadpalen op route
+        # Filters:
+        # - Laadpaal beschikbaar (AVAILABLE of CHARGING status)
+        # - Juiste ladertype (AC/Snellader/Ultrasnellader)
+        # - Maximaal 5 km van de route af
+        # - Voor de auto op de route
         filtered = (
             filter_chargers_on_route(
                 chargers=chargers,
@@ -188,7 +238,7 @@ class RouteCoordinator(
                 min_power_kw=(
                     self.min_power_kw
                 ),
-                max_route_distance_km=5,  # Afstand tot route (vast)
+                max_route_distance_km=5,  # Vast ingesteld - niet aanpasbaar
             )
         )
 
@@ -197,6 +247,9 @@ class RouteCoordinator(
             len(filtered),
         )
 
+        # STAP 4: Bereken omrijafstand voor elke laadpaal
+        # Dit is kritisch: bereken extra kilometers en minuten nodig
+        # als je de laadpaal bezoekt onderweg naar bestemming
         for charger in filtered:
 
             try:
@@ -248,6 +301,8 @@ class RouteCoordinator(
                     err,
                 )
 
+                # Bij fout, zet omrijafstand op 999 km zodat laadpaal
+                # niet in resultaten komt
                 charger[
                     "detour_km"
                 ] = 999
@@ -256,14 +311,16 @@ class RouteCoordinator(
                     "extra_minutes"
                 ] = 999
 
-        # Filter op maximale omrijafstand
+        # STAP 5: Filter op maximale omrijafstand
+        # Verwijder laadpalen die meer omrijden vereisen dan ingesteld
         filtered = [
             c
             for c in filtered
             if c["detour_km"] <= max_detour_km
         ]
 
-        # Sorteer op prijs en daarna op omrijafstand
+        # STAP 6: Sorteer op prijs (goedkoopste eerst)
+        # Dan op omrijafstand (minst omrijden eerst)
         filtered.sort(
             key=lambda c: (
                 c["price"],
@@ -278,26 +335,13 @@ class RouteCoordinator(
         )
 
         return {
-
             "route": route,
-
             "chargers": filtered,
-
             "vehicle": {
-
-                "latitude":
-                    vehicle_lat,
-
-                "longitude":
-                    vehicle_lon,
+                "latitude": vehicle_lat,
+                "longitude": vehicle_lon,
             },
-
-            "destination":
-                destination,
-            
-            "max_detour_km":
-                max_detour_km,
-            
-            "charger_type":
-                charger_type,
+            "destination": destination,
+            "max_detour_km": max_detour_km,
+            "charger_type": charger_type,
         }
