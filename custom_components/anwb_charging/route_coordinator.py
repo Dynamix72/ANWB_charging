@@ -6,14 +6,20 @@ onderweg rekening houdend met omrijafstand.
 
 Workflow:
 1. Haalt configuratie op (bestemming, max omrijafstand, ladertype)
-2. Berekent route via OpenRouteService (ORS)
-3. Haalt beschikbare laadpalen op via ANWB API
-4. Filtert laadpalen op basis van route en ladertype
-5. Berekent omrijafstand voor elke laadpaal
-6. Sorteert op prijs en omrijafstand
-7. Retourneert gefilterde en gesorteerde resultaten
+2. PROBEERT route via OpenRouteService (ORS) te berekenen
+3. Bij fout of geen bestemming: FALLBACK naar simpele laadpaalzoeken op huidige locatie
+4. Haalt beschikbare laadpalen op via ANWB API
+5. Filtert laadpalen op basis van route (indien beschikbaar) of gewoon beschikbaarheid
+6. Berekent omrijafstand voor elke laadpaal (indien route beschikbaar)
+7. Sorteert op prijs en omrijafstand
+8. Retourneert gefilterde en gesorteerde resultaten
 
 Updates: Geen automatische updates - alleen op knopdruk via UI
+
+FALLBACK SCENARIO:
+- Geen bestemming ingevuld → Zoekt laadpalen bij huidige locatie
+- Route API error (quota, timeout) → Zoekt laadpalen bij huidige locatie
+- Geen laadpalen op route → Toont laadpalen in buurt
 """
 
 from datetime import timedelta
@@ -42,7 +48,10 @@ _LOGGER = logging.getLogger(__name__)
 class RouteCoordinator(
     DataUpdateCoordinator
 ):
-    """Coordinator voor route-gebaseerde laadpaalselectie met omrijfiltering."""
+    """Coordinator voor route-gebaseerde laadpaalselectie met omrijfiltering.
+    
+    Ondersteunt fallback naar simpele laadpaalzoeken als route niet beschikbaar is.
+    """
 
     def __init__(
         self,
@@ -111,8 +120,13 @@ class RouteCoordinator(
         Dit is de main methode die wordt aangeroepen wanneer gebruiker
         de "Update" knop indrukt in de UI.
         
+        FALLBACK: Als geen bestemming of route error:
+        - Zoekt laadpalen bij huidige locatie
+        - Sorteert alleen op prijs
+        - Geen omrijberekening
+        
         Returns:
-            Dict met route data, gefilterde laadpalen en voertuigpositie
+            Dict met route data (of None), gefilterde laadpalen en voertuigpositie
         """
 
         # Lees huidige instellingen uit configuratie
@@ -169,37 +183,50 @@ class RouteCoordinator(
                 "chargers": [],
             }
 
-        # Valideer bestemming is ingesteld
+        # FALLBACK: Als geen bestemming ingevuld, ga direct naar laadpalen zoeken
         if not destination:
-            _LOGGER.warning(
-                "Geen bestemming ingevuld"
+            _LOGGER.info(
+                "Geen bestemming ingevuld - FALLBACK naar simpel laadpaal zoeken"
             )
-            return {
-                "route": None,
-                "chargers": [],
-            }
-
-        _LOGGER.info(
-            "Route berekenen naar %s (max omrijden: %s km, ladertype: %s)",
-            destination,
-            max_detour_km,
-            charger_type,
-        )
+            return await self._async_fallback_chargers(
+                vehicle_lat,
+                vehicle_lon,
+                charger_type,
+            )
 
         # STAP 1: Bereken route via OpenRouteService
-        route = await (
-            self.route_api.get_route(
+        route = None
+        try:
+            _LOGGER.info(
+                "Route berekenen naar %s (max omrijden: %s km, ladertype: %s)",
+                destination,
+                max_detour_km,
+                charger_type,
+            )
+
+            route = await self.route_api.get_route(
                 vehicle_lat,
                 vehicle_lon,
                 destination,
             )
-        )
 
-        _LOGGER.info(
-            "Route afstand=%s km tijd=%s min",
-            route["distance_km"],
-            route["duration_min"],
-        )
+            _LOGGER.info(
+                "Route afstand=%s km tijd=%s min",
+                route["distance_km"],
+                route["duration_min"],
+            )
+
+        except Exception as err:
+            # FALLBACK: Route error (quota overschreden, timeout, etc)
+            _LOGGER.warning(
+                "Route berekening mislukt (%s) - FALLBACK naar simpel laadpaal zoeken",
+                err,
+            )
+            return await self._async_fallback_chargers(
+                vehicle_lat,
+                vehicle_lon,
+                charger_type,
+            )
 
         # STAP 2: Haal laadpalen op van ANWB
         anwb_data = await (
@@ -343,5 +370,106 @@ class RouteCoordinator(
             },
             "destination": destination,
             "max_detour_km": max_detour_km,
+            "charger_type": charger_type,
+        }
+
+    async def _async_fallback_chargers(
+        self,
+        vehicle_lat,
+        vehicle_lon,
+        charger_type,
+    ):
+        """FALLBACK: Zoek laadpalen bij huidige locatie zonder routeberekening.
+        
+        Dit wordt gebruikt als:
+        - Geen bestemming ingevuld
+        - Route API error (quota overschreden, timeout, etc)
+        - Geen laadpalen op route gevonden
+        
+        Args:
+            vehicle_lat: Huidige breedtegraad
+            vehicle_lon: Huidige lengtegraad
+            charger_type: Ladertype filter
+            
+        Returns:
+            Dict met laadpalen gesorteerd op prijs
+        """
+        _LOGGER.info(
+            "FALLBACK: Laadpalen zoeken op huidige locatie (geen route)"
+        )
+
+        # Haal laadpalen op van ANWB
+        anwb_data = await self.anwb_api.get_chargers(
+            vehicle_lat,
+            vehicle_lon,
+            self.radius,
+        )
+
+        chargers = anwb_data.get("value", [])
+
+        _LOGGER.info(
+            "FALLBACK: %d laadpalen gevonden",
+            len(chargers),
+        )
+
+        # Eenvoudig filter: beschikbaarheid en ladertype
+        filtered = []
+        for charger in chargers:
+            # Check beschikbaarheid
+            evses = charger.get("electricVehicleSupplyEquipment", [])
+            statuses = [evse.get("status") for evse in evses if isinstance(evse, dict)]
+            
+            if "AVAILABLE" not in statuses and "CHARGING" not in statuses:
+                continue
+
+            # Check ladertype
+            max_power = 0
+            for evse in evses:
+                for connector in evse.get("connectors", []):
+                    max_power = max(max_power, connector.get("maxPowerInKW", 0))
+
+            # Filter op ladertype
+            if charger_type == "AC laders" and max_power >= 50:
+                continue
+            elif charger_type == "Snelladers" and (max_power < 50 or max_power >= 150):
+                continue
+            elif charger_type == "Ultrasnelladers" and max_power < 150:
+                continue
+
+            # Extract prijs
+            price_data = charger.get("price", {})
+            if not price_data:
+                price = 999
+            else:
+                try:
+                    price = float(price_data.get("price", 999))
+                except Exception:
+                    price = 999
+
+            filtered.append({
+                "charger": charger,
+                "price": price,
+                "power": max_power,
+                "detour_km": 0,  # Geen omrijden nodig - we zijn op deze locatie
+                "extra_minutes": 0,
+            })
+
+        # Sorteer alleen op prijs (geen route beschikbaar)
+        filtered.sort(key=lambda c: c["price"])
+
+        _LOGGER.info(
+            "FALLBACK: %d laadpalen beschikbaar na filter",
+            len(filtered),
+        )
+
+        return {
+            "route": None,  # Geen route berekend
+            "chargers": filtered,
+            "vehicle": {
+                "latitude": vehicle_lat,
+                "longitude": vehicle_lon,
+            },
+            "destination": None,
+            "max_detour_km": 0,
             "charger_type": charger_type,
         }
