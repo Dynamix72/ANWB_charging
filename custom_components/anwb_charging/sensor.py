@@ -243,14 +243,14 @@ async def async_setup_entry(
         CheapestChargerSensor(coordinator),
         ChargerCountSensor(coordinator),
 
-        RouteTestSensor(route_coordinator),
+#        RouteTestSensor(route_coordinator),
 
-        RouteDistanceSensor(
-            route_coordinator
-        ),
-        RouteGeoJsonSensor(
-            route_coordinator
-        ),
+#        RouteDistanceSensor(
+#            route_coordinator
+#        ),
+#        RouteGeoJsonSensor(
+#            route_coordinator
+#        ),
     ]
 
     for rank in range(1, 11):
