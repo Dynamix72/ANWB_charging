@@ -47,6 +47,10 @@ def sorted_chargers(
         data.get("value", [])
     )
 
+    print(
+        f"VALID CHARGERS={len(chargers)}"
+    )
+    
     if hass:
 
         helper = hass.states.get(
@@ -97,7 +101,11 @@ def sorted_chargers(
                     )
 
             chargers = filtered
-
+    
+    print(
+        f"AFTER POWER FILTER={len(chargers)}"
+    )
+    
     return sorted(
         chargers,
         key=lambda c: float(
@@ -510,22 +518,6 @@ class RouteDistanceSensor(
             self.coordinator.data
         )[:255]
     
-#    @property
-#    def native_value(self):
-#
-#        route = (
-#            self.coordinator.data.get(
-#                "route"
-#            )
-#        )
-#
-#        if not route:
-#            return 0
-#
-#        return route[
-#            "distance_km"
-#        ]
-
     @property
     def extra_state_attributes(self):
 
