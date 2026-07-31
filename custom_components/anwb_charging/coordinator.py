@@ -22,13 +22,13 @@ class AnwbCoordinator(DataUpdateCoordinator):
         self.hass = hass
         self.tracker_id = tracker_id
         self.radius = radius
-        self.api = AnwbApi()
+        self.api = AnwbApi(hass)
 
         super().__init__(
             hass,
             logger=_LOGGER,
             name="ANWB Charging",
-            update_interval=timedelta(hours=1),
+            update_interval=None,  # Geen automatische updates - alleen op knopdruk
         )
 
     async def _async_update_data(self):
@@ -47,7 +47,7 @@ class AnwbCoordinator(DataUpdateCoordinator):
         lat = tracker.attributes.get("latitude")
         lon = tracker.attributes.get("longitude")
 
-        _LOGGER.warning(
+        _LOGGER.info(
             "ANWB GPS lat=%s lon=%s",
             lat,
             lon,
@@ -59,9 +59,9 @@ class AnwbCoordinator(DataUpdateCoordinator):
             self.radius,
         )
 
-        _LOGGER.warning(
-            "ANWB RESPONSE=%s",
-            data,
+        _LOGGER.info(
+            "ANWB Response: %d chargers gevonden",
+            len(data.get("value", [])),
         )
 
         return data
