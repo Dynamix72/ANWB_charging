@@ -52,8 +52,7 @@ class RouteCoordinator(
             hass,
             logger=_LOGGER,
             name="ANWB Route Charging",
-            update_interval=None
-            ),
+            update_interval=None,
         )
 
     async def _async_update_data(self):
