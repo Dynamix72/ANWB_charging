@@ -52,8 +52,7 @@ class RouteCoordinator(
             hass,
             logger=_LOGGER,
             name="ANWB Route Charging",
-            update_interval=timedelta(
-                minutes=15
+            update_interval=None
             ),
         )
 
