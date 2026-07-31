@@ -1,195 +1,138 @@
+"""
+ANWB charging sensors for Home Assistant.
+
+Improvements over the original:
+- No direct /config/secrets.yaml reads (API keys should come from the coordinator or config entry).
+- Uses logging instead of print.
+- Safer dict access with .get() to avoid KeyError.
+- Adds device_info and better unique_id generation.
+- Returns None for unknown states (HA will show "unavailable"/unknown) instead of nonstandard strings.
+"""
+
+import logging
+from typing import Any, Dict, List, Optional
+
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .coordinator import AnwbCoordinator
-from .route_coordinator import RouteCoordinator
+DOMAIN = "anwb_charging"
 
-import yaml
+_LOGGER = logging.getLogger(__name__)
 
-with open("/config/secrets.yaml") as f:
-    secrets = yaml.safe_load(f)
 
-ors_api_key = secrets["ors_api_key"]
+def _safe_float(value: Any, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
 
-def filter_valid_chargers(chargers):
 
-    valid = []
+def filter_valid_chargers(chargers: List[Dict]) -> List[Dict]:
+    """Return chargers that have price information and at least one AVAILABLE or CHARGING evse."""
+    valid: List[Dict] = []
 
     for charger in chargers:
-
         if charger.get("price") is None:
             continue
 
-        evses = charger.get(
-            "electricVehicleSupplyEquipment",
-            []
-        )
+        evses = charger.get("electricVehicleSupplyEquipment", [])
+        if not isinstance(evses, list):
+            continue
 
-        statuses = [
-            evse.get("status")
-            for evse in evses
-        ]
+        statuses = [evse.get("status") for evse in evses if isinstance(evse, dict)]
 
-        if (
-            "AVAILABLE" in statuses
-            or "CHARGING" in statuses
-        ):
+        if "AVAILABLE" in statuses or "CHARGING" in statuses:
             valid.append(charger)
 
     return valid
 
-def sorted_chargers(
-    data,
-    hass=None,
-):
 
-    chargers = filter_valid_chargers(
-        data.get("value", [])
-    )
+def sorted_chargers(data: Dict, hass=None) -> List[Dict]:
+    """
+    Return the sorted list of valid chargers by price (lowest first).
+    Optionally apply a power filter based on an input_select helper in Home Assistant.
+    """
+    chargers = filter_valid_chargers(data.get("value", []))
 
-    print(
-        f"VALID CHARGERS={len(chargers)}"
-    )
-    
+    _LOGGER.debug("VALID CHARGERS=%d", len(chargers))
+
     if hass:
-
-        helper = hass.states.get(
-            "input_select.anwb_lader_filter"
-        )
-
+        helper = hass.states.get("input_select.anwb_lader_filter")
         if helper:
-
             mode = helper.state
-
-            filtered = []
+            filtered: List[Dict] = []
 
             for charger in chargers:
-
-                info = extract_charger_info(
-                    charger
-                )
-
-                power = info[
-                    "max_power_kw"
-                ]
+                info = extract_charger_info(charger)
+                power = info.get("max_power_kw", 0)
 
                 if mode == "AC laders":
-
                     if power < 50:
-                        filtered.append(
-                            charger
-                        )
-
+                        filtered.append(charger)
                 elif mode == "Snelladers":
-
                     if power >= 50:
-                        filtered.append(
-                            charger
-                        )
-
+                        filtered.append(charger)
                 elif mode == "Ultrasnelladers":
-
                     if power >= 150:
-                        filtered.append(
-                            charger
-                        )
-
+                        filtered.append(charger)
                 else:
-
-                    filtered.append(
-                        charger
-                    )
+                    filtered.append(charger)
 
             chargers = filtered
-    
-    print(
-        f"AFTER POWER FILTER={len(chargers)}"
-    )
-    
-    return sorted(
-        chargers,
-        key=lambda c: float(
-            c["price"]["price"]
-        )
-    )
 
-def extract_charger_info(charger):
+    _LOGGER.debug("AFTER POWER FILTER=%d", len(chargers))
 
+    def _price_key(c: Dict) -> float:
+        try:
+            return _safe_float(c.get("price", {}).get("price"))
+        except Exception:
+            return float("inf")
+
+    return sorted(chargers, key=_price_key)
+
+
+def extract_charger_info(charger: Dict) -> Dict:
+    """Extract aggregated information from charger data."""
     max_power_kw = 0
-
     total_points = 0
     available_points = 0
-
     energy_price = None
-    energy_display_text = []
-
+    energy_display_text: List = []
     session_price = None
-    session_display_text = []
+    session_display_text: List = []
 
-    for evse in charger.get(
-        "electricVehicleSupplyEquipment",
-        []
-    ):
+    evses = charger.get("electricVehicleSupplyEquipment", []) or []
+    for evse in evses:
+        if not isinstance(evse, dict):
+            continue
 
         total_points += 1
-
         if evse.get("status") == "AVAILABLE":
             available_points += 1
 
-        for connector in evse.get(
-            "connectors",
-            []
-        ):
+        connectors = evse.get("connectors", []) or []
+        for connector in connectors:
+            if not isinstance(connector, dict):
+                continue
 
             max_power_kw = max(
-                max_power_kw,
-                connector.get(
-                    "maxPowerInKW",
-                    0
-                )
+                max_power_kw, _safe_float(connector.get("maxPowerInKW", 0), 0)
             )
 
-            for tariff in connector.get(
-                "prices",
-                []
-            ):
-
-                for component in tariff.get(
-                    "priceComponents",
-                    []
-                ):
+            for tariff in connector.get("prices", []) or []:
+                if not isinstance(tariff, dict):
+                    continue
+                for component in tariff.get("priceComponents", []) or []:
+                    if not isinstance(component, dict):
+                        continue
 
                     code = component.get("code")
-
-                    if (
-                        code == "ENERGY"
-                        and energy_price is None
-                    ):
-                        energy_price = component.get(
-                            "value"
-                        )
-
-                        energy_display_text = (
-                            component.get(
-                                "displayText",
-                                []
-                            )
-                        )
-
-                    if (
-                        code == "SESSION"
-                        and session_price is None
-                    ):
-                        session_price = component.get(
-                            "value"
-                        )
-
-                        session_display_text = (
-                            component.get(
-                                "displayText",
-                                []
-                            )
-                        )
+                    if code == "ENERGY" and energy_price is None:
+                        energy_price = component.get("value")
+                        energy_display_text = component.get("displayText", [])
+                    if code == "SESSION" and session_price is None:
+                        session_price = component.get("value")
+                        session_display_text = component.get("displayText", [])
 
     return {
         "max_power_kw": max_power_kw,
@@ -202,363 +145,217 @@ def extract_charger_info(charger):
         "session_display_text": session_display_text,
     }
 
-async def async_setup_entry(
-    hass,
-    entry,
-    async_add_entities,
-):
 
+async def async_setup_entry(hass, entry, async_add_entities):
+    """Set up ANWB sensors from a config entry."""
+    # Coordinator should be responsible for API key and refresh logic.
     coordinator = AnwbCoordinator(
         hass,
-        entry.data["device_tracker"],
-        entry.data["radius"],
+        entry.data.get("device_tracker"),
+        entry.data.get("radius"),
     )
 
     await coordinator.async_config_entry_first_refresh()
 
-#    route_coordinator = RouteCoordinator(
-#        hass,
-#        entry.data["device_tracker"],
-#        entry.data["radius"],
-#        int(
-#            float(
-#                hass.states.get(
-#                    "input_number.anwb_min_power_kw"
-#                ).state
-#            )
-#        ),
-#        int(
-#            float(
-#                hass.states.get(
-#                    "input_number.anwb_max_detour_km"
-#                ).state
-#            )
-#        ),
-#        ors_api_key,
-#    )
-
-#    await route_coordinator.async_config_entry_first_refresh()
-
-    entities = [
-        CheapestChargerSensor(coordinator),
-        ChargerCountSensor(coordinator),
-
-#        RouteTestSensor(route_coordinator),
-
-#        RouteDistanceSensor(
-#            route_coordinator
-#        ),
-#        RouteGeoJsonSensor(
-#            route_coordinator
-#        ),
+    entities: List[SensorEntity] = [
+        CheapestChargerSensor(coordinator, entry.entry_id),
+        ChargerCountSensor(coordinator, entry.entry_id),
     ]
 
+    # Create top N sensors (1..10)
     for rank in range(1, 11):
-
-        entities.append(
-            TopChargerSensor(
-                coordinator,
-                rank,
-            )
-        )
+        entities.append(TopChargerSensor(coordinator, entry.entry_id, rank))
 
     async_add_entities(entities)
 
 
-class CheapestChargerSensor(
-    CoordinatorEntity,
-    SensorEntity,
-):
+class AnwbBaseSensor(CoordinatorEntity, SensorEntity):
+    """Base class for ANWB sensors."""
 
-    def __init__(self, coordinator):
+    def __init__(self, coordinator, entry_id: Optional[str], name: str, unique_id: str):
         super().__init__(coordinator)
+        self.coordinator = coordinator
+        self._attr_name = name
+        # include entry_id in unique_id when present to allow multiple installs
+        self._attr_unique_id = f"{entry_id}_{unique_id}" if entry_id else unique_id
+        self._attr_should_poll = False
 
-        self._attr_name = "ANWB Cheapest Charger"
-        self._attr_unique_id = "anwb_cheapest"
+        # device_info to group all sensors under one device in HA
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, entry_id or unique_id)},
+            "name": "ANWB Charging",
+            "manufacturer": "ANWB",
+            "model": "ANWB Charging Integration",
+        }
+
+
+class CheapestChargerSensor(AnwbBaseSensor):
+    """Sensor that exposes the title of the cheapest charger."""
+
+    def __init__(self, coordinator, entry_id: Optional[str]):
+        super().__init__(
+            coordinator,
+            entry_id,
+            name="ANWB Cheapest Charger",
+            unique_id="anwb_cheapest",
+        )
 
     @property
-    def native_value(self):
+    def native_value(self) -> Optional[str]:
+        chargers = sorted_chargers(self.coordinator.data, self.coordinator.hass)
+
+        if not chargers:
+            return None
+
+        return chargers[0].get("title")
 
 
-       chargers = sorted_chargers(
-          self.coordinator.data,
-          self.coordinator.hass,
-       )
+class ChargerCountSensor(AnwbBaseSensor):
+    """Sensor that returns the number of (filtered) chargers."""
 
-
-       if not chargers:
-           return "Geen laadpalen"
-
-       return chargers[0]["title"]
-
-
-class ChargerCountSensor(
-    CoordinatorEntity,
-    SensorEntity,
-):
-
-    def __init__(self, coordinator):
-        super().__init__(coordinator)
-
-        self._attr_name = "ANWB Charger Count"
-        self._attr_unique_id = "anwb_charger_count"
+    def __init__(self, coordinator, entry_id: Optional[str]):
+        super().__init__(
+            coordinator,
+            entry_id,
+            name="ANWB Charger Count",
+            unique_id="anwb_charger_count",
+        )
         self._attr_icon = "mdi:ev-station"
 
     @property
-    def native_value(self):
-
-
-        chargers = sorted_chargers(
-            self.coordinator.data,
-            self.coordinator.hass,
-        )
-       
-
+    def native_value(self) -> Optional[int]:
+        chargers = sorted_chargers(self.coordinator.data, self.coordinator.hass)
         return len(chargers)
 
 
-class TopChargerSensor(
-    CoordinatorEntity,
-    SensorEntity,
-):
+class TopChargerSensor(AnwbBaseSensor):
+    """Sensor for the Nth top charger."""
 
-    def __init__(
-        self,
-        coordinator,
-        rank,
-    ):
-        super().__init__(coordinator)
-
+    def __init__(self, coordinator, entry_id: Optional[str], rank: int):
+        super().__init__(
+            coordinator,
+            entry_id,
+            name=f"ANWB Top {rank}",
+            unique_id=f"anwb_top_{rank}",
+        )
         self.rank = rank
 
-        self._attr_name = (
-            f"ANWB Top {rank}"
-        )
-
-        self._attr_unique_id = (
-            f"anwb_top_{rank}"
-        )
-
-    def _charger(self):
-
-        
-        chargers = sorted_chargers(
-            self.coordinator.data,
-            self.coordinator.hass,
-        )
-
+    def _charger(self) -> Optional[Dict]:
+        chargers = sorted_chargers(self.coordinator.data, self.coordinator.hass)
         index = self.rank - 1
-
-        if len(chargers) <= index:
+        if index < 0 or index >= len(chargers):
             return None
-
         return chargers[index]
 
     @property
-    def native_value(self):
-
+    def native_value(self) -> Optional[str]:
         charger = self._charger()
-
         if charger is None:
-            return "Geen laadpaal"
-
-        return charger["title"]
+            return None
+        return charger.get("title")
 
     @property
-    def extra_state_attributes(self):
-
+    def extra_state_attributes(self) -> Dict:
         charger = self._charger()
-
         if charger is None:
             return {}
 
         status = "AVAILABLE"
-
-        for evse in charger.get(
-            "electricVehicleSupplyEquipment",
-            []
-        ):
-
-            if (
-                evse.get("status")
-                == "CHARGING"
-            ):
+        for evse in charger.get("electricVehicleSupplyEquipment", []) or []:
+            if evse.get("status") == "CHARGING":
                 status = "CHARGING"
                 break
 
-        info = extract_charger_info(
-            charger
-        )
+        info = extract_charger_info(charger)
 
-        return {
+        # use .get everywhere to avoid KeyError
+        price_info = charger.get("price", {})
+        address = charger.get("address", {}) or {}
+        coords = charger.get("coordinates", {}) or {}
 
+        attributes = {
             "rank": self.rank,
-
-            "price_per_kwh":
-                info["energy_price"],
-
-            "price_display_text":
-                info["energy_display_text"],
-
-            "session_price":
-                info["session_price"],
-
-            "session_display_text":
-                info["session_display_text"],
-
-            "max_power_kw":
-                info["max_power_kw"],
-
-            "charge_points_total":
-                info["charge_points_total"],
-
-            "charge_points_available":
-                info["charge_points_available"],
-
-            "availability_text":
-                info["availability_text"],
-
-            "currency":
-                charger["price"]["currency"],
-
-            "street":
-                charger["address"][
-                    "streetAddress"
-                ],
-
-            "postal_code":
-                charger["address"][
-                    "postalCode"
-                ],
-
-            "city":
-                charger["address"][
-                    "city"
-                ],
-
-            "full_address":
-                f"{charger['address']['streetAddress']}, "
-                f"{charger['address']['postalCode']} "
-                f"{charger['address']['city']}",
-
-            "status":
-                status,
-
-            "icon":
-                "mdi:lightning-bolt"
-                if status == "CHARGING"
-                else "mdi:ev-station",
-
-            "latitude":
-                charger["coordinates"][
-                    "latitude"
-                ],
-
-            "longitude":
-                charger["coordinates"][
-                    "longitude"
-                ],
+            "price_per_kwh": info.get("energy_price"),
+            "price_display_text": info.get("energy_display_text"),
+            "session_price": info.get("session_price"),
+            "session_display_text": info.get("session_display_text"),
+            "max_power_kw": info.get("max_power_kw"),
+            "charge_points_total": info.get("charge_points_total"),
+            "charge_points_available": info.get("charge_points_available"),
+            "availability_text": info.get("availability_text"),
+            "currency": price_info.get("currency"),
+            "street": address.get("streetAddress"),
+            "postal_code": address.get("postalCode"),
+            "city": address.get("city"),
+            "full_address": ", ".join(
+                filter(
+                    None,
+                    [
+                        address.get("streetAddress"),
+                        address.get("postalCode"),
+                        address.get("city"),
+                    ],
+                )
+            ),
+            "status": status,
+            "icon": "mdi:lightning-bolt" if status == "CHARGING" else "mdi:ev-station",
+            "latitude": _safe_float(coords.get("latitude"), None),
+            "longitude": _safe_float(coords.get("longitude"), None),
         }
 
-class RouteTestSensor(
-    CoordinatorEntity,
-    SensorEntity,
-):
+        # Remove None values to keep attributes compact/serializable
+        return {k: v for k, v in attributes.items() if v is not None}
 
-    def __init__(
-        self,
-        coordinator,
-    ):
+
+# Route sensors left largely as-is, but should be wired to a RouteCoordinator if used.
+class RouteTestSensor(AnwbBaseSensor):
+    def __init__(self, coordinator, entry_id: Optional[str]):
         super().__init__(
-            coordinator
-        )
-
-        self._attr_name = (
-            "ANWB Route Test"
-        )
-
-        self._attr_unique_id = (
-            "anwb_route_test"
+            coordinator,
+            entry_id,
+            name="ANWB Route Test",
+            unique_id="anwb_route_test",
         )
 
     @property
     def native_value(self):
-
         return "Route API OK"
 
     @property
     def extra_state_attributes(self):
+        return {"status": "Test sensor actief"}
 
-        return {
-            "status": "Test sensor actief"
-        }
 
-class RouteDistanceSensor(
-    SensorEntity,
-):
-
-    def __init__(
-        self,
-        route_coordinator,
-    ):
+class RouteDistanceSensor(SensorEntity):
+    def __init__(self, route_coordinator):
         self.coordinator = route_coordinator
-
-        self._attr_name = (
-            "ANWB Route Distance"
-        )
-
-        self._attr_unique_id = (
-            "anwb_route_distance"
-        )
+        self._attr_name = "ANWB Route Distance"
+        self._attr_unique_id = f"anwb_route_distance_{getattr(route_coordinator, 'entry_id', '')}"
+        self._attr_should_poll = False
 
     @property
     def native_value(self):
-    
-        return str(
-            self.coordinator.data
-        )[:255]
-    
+        return str(self.coordinator.data)[:255]
+
     @property
     def extra_state_attributes(self):
-
-        route = (
-            self.coordinator.data.get(
-                "route"
-            )
-        )
-
+        route = self.coordinator.data.get("route")
         if not route:
             return {}
-
         return {
-            "duration_min":
-                route["duration_min"],
-
-            "destination":
-                route["destination"],
-
-            "route_points":
-                len(
-                    route["coordinates"]
-                ),
-
-            "coordinates":
-                route["coordinates"],
+            "duration_min": route.get("duration_min"),
+            "destination": route.get("destination"),
+            "route_points": len(route.get("coordinates", [])),
+            "coordinates": route.get("coordinates", []),
         }
 
-class RouteGeoJsonSensor(
-    CoordinatorEntity,
-    SensorEntity,
-):
 
-    def __init__(
-        self,
-        coordinator,
-    ):
+class RouteGeoJsonSensor(CoordinatorEntity, SensorEntity):
+    def __init__(self, coordinator, entry_id: Optional[str]):
         super().__init__(coordinator)
-
         self._attr_name = "ANWB Route GeoJSON"
-        self._attr_unique_id = "anwb_route_geojson"
+        self._attr_unique_id = f"anwb_route_geojson_{entry_id or ''}"
+        self._attr_should_poll = False
 
     @property
     def native_value(self):
@@ -566,15 +363,5 @@ class RouteGeoJsonSensor(
 
     @property
     def extra_state_attributes(self):
-
-        route = self.coordinator.data.get(
-            "route",
-            {},
-        )
-
-        return {
-            "geojson": route.get(
-                "geojson",
-                {}
-            )
-        }
+        route = self.coordinator.data.get("route", {})
+        return {"geojson": route.get("geojson", {})}
