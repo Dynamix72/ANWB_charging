@@ -1,3 +1,18 @@
+"""
+Configuration Flow voor ANWB Charging Integration.
+
+Dit bestand definieert:
+1. ConfigFlow - initiële setup formulier
+2. OptionsFlowHandler - instellingen wijzigen formulier
+
+Gebruiker kan instellen:
+- Device Tracker (GPS bron)
+- Bestemming (waar wil je heen)
+- Maximale omrijafstand (hoeveel km extra rijden accepteer je)
+- Ladertype (AC, Snellader, Ultrasnellader, of Alle)
+- OpenRouteService API Key (optioneel, voor routeberekening)
+"""
+
 from __future__ import annotations
 
 import voluptuous as vol
@@ -32,28 +47,41 @@ from .const import (
 
 
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+    """Initiële setup flow voor ANWB Charging integration."""
+    
     VERSION = 1
 
     async def async_step_user(self, user_input=None):
-        """Handle the initial configuration form."""
+        """Handle de initiële configuratie stap.
+        
+        Gebruiker moet selecteren:
+        - Device Tracker (voor GPS locatie)
+        - Bestemming (waar wil je heen)
+        - Maximale omrijafstand (hoeveel km extra rijden is ok)
+        - Ladertype (welke soort laadpalen)
+        - ORS API Key (optioneel, voor betere routeberekening)
+        """
         if user_input is not None:
-            # use device_tracker value as unique id to prevent duplicate installs for same tracker
+            # Gebruik device_tracker als unique ID om duplicaten te voorkomen
             await self.async_set_unique_id(user_input[CONF_DEVICE_TRACKER])
             self._abort_if_unique_id_configured()
 
-            # Store entered values (including optional ors_api_key) on the config entry
+            # Sla instellingen op in config entry
             return self.async_create_entry(title="ANWB Charging", data=user_input)
 
-        # Default values come from nothing (first run). If you want defaults from options, add logic.
+        # Toon setup formulier met alle velden
         return self.async_show_form(
             step_id="user",
             data_schema=vol.Schema(
                 {
+                    # Verplicht: Selecteer device tracker voor GPS
                     vol.Required(
                         CONF_DEVICE_TRACKER
                     ): EntitySelector(
                         EntitySelectorConfig(domain="device_tracker")
                     ),
+                    
+                    # Verplicht: Bestemming (adres of plaats)
                     vol.Required(
                         CONF_DESTINATION,
                         default=DEFAULT_DESTINATION,
@@ -63,6 +91,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                             type="text",
                         )
                     ),
+                    
+                    # Verplicht: Maximale omrijafstand (1-100 km)
                     vol.Required(
                         CONF_MAX_DETOUR_KM,
                         default=DEFAULT_MAX_DETOUR_KM,
@@ -74,6 +104,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                             mode=NumberSelectorMode.BOX,
                         )
                     ),
+                    
+                    # Verplicht: Ladertype selectie
                     vol.Required(
                         CONF_CHARGER_TYPE,
                         default=DEFAULT_CHARGER_TYPE,
@@ -82,6 +114,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                             options=CHARGER_TYPES,
                         )
                     ),
+                    
+                    # Optioneel: OpenRouteService API Key voor routeberekening
                     vol.Optional(
                         CONF_ORS_API_KEY,
                         default="",
@@ -93,26 +127,43 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     @staticmethod
     @config_entries.HANDLERS.register("anwb_charging")
     def async_get_options_flow(entry):
-        """Return options flow handler for this config entry."""
+        """Geef options flow handler terug voor instellingen wijzigen.
+        
+        Dit staat gebruiker toe om instellingen aan te passen
+        zonder de integration opnieuw in te stellen.
+        """
         return OptionsFlowHandler(entry)
 
 
 class OptionsFlowHandler(config_entries.OptionsFlow):
-    """Handle options for ANWB Charging (destination, max detour, charger type, and ORS API key)."""
+    """Handle instellingen wijzigen na initiële setup.
+    
+    Gebruiker kan wijzigen:
+    - Bestemming
+    - Maximale omrijafstand
+    - Ladertype
+    - ORS API Key
+    """
 
     def __init__(self, entry: config_entries.ConfigEntry) -> None:
+        """Initialiseer options handler."""
         self.entry = entry
 
     async def async_step_init(self, user_input=None):
-        """Show options form to update settings."""
+        """Toon instellingen formulier en verwerk wijzigingen.
+        
+        Wijzigingen worden direct opgeslagen en kunnen onmiddellijk
+        gebruikt worden door coordinators.
+        """
         if user_input is not None:
-            # Merge previous options with new values
-            # We use config entry options so users can update these without re-creating the entry
+            # Merge vorige opties met nieuwe waarden
+            # Options hebben voorrang boven data (initiële setup)
             new_options = {**self.entry.options, **user_input}
             self.hass.config_entries.async_update_entry(self.entry, options=new_options)
             return self.async_create_entry(title="", data=new_options)
 
-        # Pre-fill form with existing values (fallback to entry.data or defaults)
+        # Pre-fill formulier met huidige waarden
+        # Prioriteit: options > data > default
         current_destination = (
             self.entry.options.get(CONF_DESTINATION)
             or self.entry.data.get(CONF_DESTINATION)
@@ -134,10 +185,12 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             or ""
         )
 
+        # Toon instellingen formulier
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema(
                 {
+                    # Wijzigbare: Bestemming
                     vol.Required(
                         CONF_DESTINATION,
                         default=current_destination,
@@ -147,6 +200,8 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                             type="text",
                         )
                     ),
+                    
+                    # Wijzigbare: Maximale omrijafstand
                     vol.Required(
                         CONF_MAX_DETOUR_KM,
                         default=current_max_detour,
@@ -158,6 +213,8 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                             mode=NumberSelectorMode.BOX,
                         )
                     ),
+                    
+                    # Wijzigbare: Ladertype
                     vol.Required(
                         CONF_CHARGER_TYPE,
                         default=current_charger_type,
@@ -166,6 +223,8 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                             options=CHARGER_TYPES,
                         )
                     ),
+                    
+                    # Wijzigbare: ORS API Key
                     vol.Optional(
                         CONF_ORS_API_KEY,
                         default=current_ors_key,
