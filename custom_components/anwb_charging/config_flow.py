@@ -11,14 +11,23 @@ from homeassistant.helpers.selector import (
     NumberSelectorMode,
     TextSelector,
     TextSelectorConfig,
+    SelectSelector,
+    SelectSelectorConfig,
 )
 
 from .const import (
     DOMAIN,
     CONF_DEVICE_TRACKER,
     CONF_RADIUS,
-    DEFAULT_RADIUS,
+    CONF_MAX_DETOUR_KM,
+    CONF_CHARGER_TYPE,
+    CONF_DESTINATION,
     CONF_ORS_API_KEY,
+    DEFAULT_RADIUS,
+    DEFAULT_MAX_DETOUR_KM,
+    DEFAULT_CHARGER_TYPE,
+    DEFAULT_DESTINATION,
+    CHARGER_TYPES,
 )
 
 
@@ -46,14 +55,31 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         EntitySelectorConfig(domain="device_tracker")
                     ),
                     vol.Required(
-                        CONF_RADIUS,
-                        default=DEFAULT_RADIUS,
+                        CONF_DESTINATION,
+                        default=DEFAULT_DESTINATION,
+                    ): TextSelector(
+                        TextSelectorConfig(
+                            multiline=False,
+                            type="text",
+                        )
+                    ),
+                    vol.Required(
+                        CONF_MAX_DETOUR_KM,
+                        default=DEFAULT_MAX_DETOUR_KM,
                     ): NumberSelector(
                         NumberSelectorConfig(
                             min=1,
                             max=100,
                             step=1,
                             mode=NumberSelectorMode.BOX,
+                        )
+                    ),
+                    vol.Required(
+                        CONF_CHARGER_TYPE,
+                        default=DEFAULT_CHARGER_TYPE,
+                    ): SelectSelector(
+                        SelectSelectorConfig(
+                            options=CHARGER_TYPES,
                         )
                     ),
                     vol.Optional(
@@ -72,13 +98,13 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 
 class OptionsFlowHandler(config_entries.OptionsFlow):
-    """Handle options for ANWB Charging (radius and ORS API key)."""
+    """Handle options for ANWB Charging (destination, max detour, charger type, and ORS API key)."""
 
     def __init__(self, entry: config_entries.ConfigEntry) -> None:
         self.entry = entry
 
     async def async_step_init(self, user_input=None):
-        """Show options form to update radius and ors_api_key."""
+        """Show options form to update settings."""
         if user_input is not None:
             # Merge previous options with new values
             # We use config entry options so users can update these without re-creating the entry
@@ -87,10 +113,20 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             return self.async_create_entry(title="", data=new_options)
 
         # Pre-fill form with existing values (fallback to entry.data or defaults)
-        current_radius = (
-            self.entry.options.get(CONF_RADIUS)
-            or self.entry.data.get(CONF_RADIUS)
-            or DEFAULT_RADIUS
+        current_destination = (
+            self.entry.options.get(CONF_DESTINATION)
+            or self.entry.data.get(CONF_DESTINATION)
+            or DEFAULT_DESTINATION
+        )
+        current_max_detour = (
+            self.entry.options.get(CONF_MAX_DETOUR_KM)
+            or self.entry.data.get(CONF_MAX_DETOUR_KM)
+            or DEFAULT_MAX_DETOUR_KM
+        )
+        current_charger_type = (
+            self.entry.options.get(CONF_CHARGER_TYPE)
+            or self.entry.data.get(CONF_CHARGER_TYPE)
+            or DEFAULT_CHARGER_TYPE
         )
         current_ors_key = (
             self.entry.options.get(CONF_ORS_API_KEY)
@@ -103,8 +139,17 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             data_schema=vol.Schema(
                 {
                     vol.Required(
-                        CONF_RADIUS,
-                        default=current_radius,
+                        CONF_DESTINATION,
+                        default=current_destination,
+                    ): TextSelector(
+                        TextSelectorConfig(
+                            multiline=False,
+                            type="text",
+                        )
+                    ),
+                    vol.Required(
+                        CONF_MAX_DETOUR_KM,
+                        default=current_max_detour,
                     ): NumberSelector(
                         NumberSelectorConfig(
                             min=1,
@@ -113,7 +158,18 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                             mode=NumberSelectorMode.BOX,
                         )
                     ),
-                    vol.Optional(CONF_ORS_API_KEY, default=current_ors_key): TextSelector(
+                    vol.Required(
+                        CONF_CHARGER_TYPE,
+                        default=current_charger_type,
+                    ): SelectSelector(
+                        SelectSelectorConfig(
+                            options=CHARGER_TYPES,
+                        )
+                    ),
+                    vol.Optional(
+                        CONF_ORS_API_KEY,
+                        default=current_ors_key,
+                    ): TextSelector(
                         TextSelectorConfig(multiline=False)
                     ),
                 }
