@@ -46,9 +46,10 @@ class RouteCoordinator(
 
         self.ors_api_key = ors_api_key
 
-        self.anwb_api = AnwbApi()
+        self.anwb_api = AnwbApi(hass)
 
         self.route_api = RouteApi(
+            hass,
             ors_api_key
         )
 
@@ -56,7 +57,7 @@ class RouteCoordinator(
             hass,
             logger=_LOGGER,
             name="ANWB Route Charging",
-            update_interval=timedelta(minutes=5),
+            update_interval=None,  # Geen automatische updates - alleen op knopdruk
         )
 
     def _get_config_value(self, key, default):
