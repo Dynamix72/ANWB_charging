@@ -216,28 +216,28 @@ async def async_setup_entry(
 
     await coordinator.async_config_entry_first_refresh()
 
-    route_coordinator = RouteCoordinator(
-        hass,
-        entry.data["device_tracker"],
-        entry.data["radius"],
-        int(
-            float(
-                hass.states.get(
-                    "input_number.anwb_min_power_kw"
-                ).state
-            )
-        ),
-        int(
-            float(
-                hass.states.get(
-                    "input_number.anwb_max_detour_km"
-                ).state
-            )
-        ),
-        ors_api_key,
-    )
+#    route_coordinator = RouteCoordinator(
+#        hass,
+#        entry.data["device_tracker"],
+#        entry.data["radius"],
+#        int(
+#            float(
+#                hass.states.get(
+#                    "input_number.anwb_min_power_kw"
+#                ).state
+#            )
+#        ),
+#        int(
+#            float(
+#                hass.states.get(
+#                    "input_number.anwb_max_detour_km"
+#                ).state
+#            )
+#        ),
+#        ors_api_key,
+#    )
 
-    await route_coordinator.async_config_entry_first_refresh()
+#    await route_coordinator.async_config_entry_first_refresh()
 
     entities = [
         CheapestChargerSensor(coordinator),
