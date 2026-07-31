@@ -10,6 +10,13 @@ from .route_api import RouteApi
 from .geo import (
     filter_chargers_on_route,
 )
+from .const import (
+    CONF_MAX_DETOUR_KM,
+    CONF_CHARGER_TYPE,
+    CONF_DESTINATION,
+    DEFAULT_MAX_DETOUR_KM,
+    DEFAULT_CHARGER_TYPE,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -21,24 +28,21 @@ class RouteCoordinator(
     def __init__(
         self,
         hass,
+        entry,
         tracker_id,
         radius,
         min_power_kw,
-        max_route_distance_km,
         ors_api_key,
     ):
 
         self.hass = hass
+        self.entry = entry
 
         self.tracker_id = tracker_id
 
         self.radius = radius
 
         self.min_power_kw = min_power_kw
-
-        self.max_route_distance_km = (
-            max_route_distance_km
-        )
 
         self.ors_api_key = ors_api_key
 
@@ -52,10 +56,32 @@ class RouteCoordinator(
             hass,
             logger=_LOGGER,
             name="ANWB Route Charging",
-            update_interval=None,
+            update_interval=timedelta(minutes=5),
+        )
+
+    def _get_config_value(self, key, default):
+        """Get config value from options or data."""
+        return (
+            self.entry.options.get(key)
+            or self.entry.data.get(key)
+            or default
         )
 
     async def _async_update_data(self):
+
+        # Get configuration from entry (can be updated via UI)
+        max_detour_km = self._get_config_value(
+            CONF_MAX_DETOUR_KM,
+            DEFAULT_MAX_DETOUR_KM
+        )
+        charger_type = self._get_config_value(
+            CONF_CHARGER_TYPE,
+            DEFAULT_CHARGER_TYPE
+        )
+        destination = self._get_config_value(
+            CONF_DESTINATION,
+            ""
+        )
 
         tracker = self.hass.states.get(
             self.tracker_id
@@ -99,37 +125,6 @@ class RouteCoordinator(
                 "chargers": [],
             }
 
-        destination_entity = (
-            self.hass.states.get(
-                "input_text.anwb_route_destination"
-            )
-        )
-
-        if (
-            destination_entity is None
-        ):
-
-            _LOGGER.warning(
-                "input_text.anwb_route_destination niet gevonden"
-            )
-
-            return {
-                "route": None,
-                "chargers": [],
-            }
-            
-            _LOGGER.warning(
-                "ROUTE TEST bestemming=%s "
-                "afstand=%s km "
-                "duur=%s min",
-                destination,
-                route["distance_km"],
-                route["duration_min"],
-            )
-        destination = (
-            destination_entity.state.strip()
-        )
-
         if not destination:
 
             _LOGGER.warning(
@@ -141,9 +136,11 @@ class RouteCoordinator(
                 "chargers": [],
             }
 
-        _LOGGER.warning(
-            "Route berekenen naar %s",
+        _LOGGER.info(
+            "Route berekenen naar %s (max omrijden: %s km, ladertype: %s)",
             destination,
+            max_detour_km,
+            charger_type,
         )
 
         route = await (
@@ -154,7 +151,7 @@ class RouteCoordinator(
             )
         )
 
-        _LOGGER.warning(
+        _LOGGER.info(
             "Route afstand=%s km tijd=%s min",
             route["distance_km"],
             route["duration_min"],
@@ -173,19 +170,9 @@ class RouteCoordinator(
             []
         )
 
-        _LOGGER.warning(
+        _LOGGER.info(
             "ANWB laadpalen gevonden=%s",
             len(chargers),
-        )
-
-        helper = self.hass.states.get(
-            "input_select.anwb_lader_filter"
-        )
-
-        charger_mode = (
-            helper.state
-            if helper
-            else "Alle laders"
         )
 
         filtered = (
@@ -196,17 +183,15 @@ class RouteCoordinator(
                 ],
                 vehicle_lat=vehicle_lat,
                 vehicle_lon=vehicle_lon,
-                charger_mode=charger_mode,
+                charger_mode=charger_type,
                 min_power_kw=(
                     self.min_power_kw
                 ),
-                max_route_distance_km=(
-                    self.max_route_distance_km
-                ),
+                max_route_distance_km=5,  # Afstand tot route (vast)
             )
         )
 
-        _LOGGER.warning(
+        _LOGGER.info(
             "Route laadpalen over=%s",
             len(filtered),
         )
@@ -270,12 +255,14 @@ class RouteCoordinator(
                     "extra_minutes"
                 ] = 999
 
+        # Filter op maximale omrijafstand
         filtered = [
             c
             for c in filtered
-            if c["detour_km"] <= 10
+            if c["detour_km"] <= max_detour_km
         ]
 
+        # Sorteer op prijs en daarna op omrijafstand
         filtered.sort(
             key=lambda c: (
                 c["price"],
@@ -283,15 +270,12 @@ class RouteCoordinator(
             )
         )
 
-        _LOGGER.warning(
-            "Resultaat na omrijfilter=%s",
+        _LOGGER.info(
+            "Resultaat na omrijfilter (max %s km)=%s",
+            max_detour_km,
             len(filtered),
         )
-        _LOGGER.warning(
-            "ROUTE RESULT route=%s chargers=%s",
-            route,
-            len(filtered),
-        )
+
         return {
 
             "route": route,
@@ -309,4 +293,10 @@ class RouteCoordinator(
 
             "destination":
                 destination,
+            
+            "max_detour_km":
+                max_detour_km,
+            
+            "charger_type":
+                charger_type,
         }
