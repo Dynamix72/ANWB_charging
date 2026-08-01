@@ -1,0 +1,527 @@
+title: ANWB Laadpalen
+path: anwb-charging
+icon: mdi:ev-station
+
+sections:
+  # Kaart met route en laadpalen
+  - type: grid
+    columns: 1
+    cards:
+      - type: custom:config-template-card
+        entities:
+          - sensor.anwb_top_1
+          - sensor.anwb_top_2
+          - sensor.anwb_top_3
+          - sensor.anwb_top_4
+          - sensor.anwb_top_5
+          - sensor.anwb_top_6
+          - sensor.anwb_top_7
+          - sensor.anwb_top_8
+          - sensor.anwb_top_9
+          - sensor.anwb_top_10
+          - device_tracker.mijn_positie
+        card:
+          type: custom:map
+          default_zoom: 10
+          center_latitude: |
+            [[[
+              const tracker = hass.states['device_tracker.mijn_positie'];
+              return tracker ? tracker.attributes.latitude : 52.1326;
+            ]]]
+          center_longitude: |
+            [[[
+              const tracker = hass.states['device_tracker.mijn_positie'];
+              return tracker ? tracker.attributes.longitude : 5.2913;
+            ]]]
+          entities:
+            # Device tracker als blauwe marker
+            - entity: device_tracker.mijn_positie
+              name: Mijn Positie
+              color: '#2196F3'
+              icon: mdi:car
+              icon_size: 32x32
+              
+            # Laadpalen met nummers 1-10
+            - entity: sensor.anwb_top_1
+              name: '1. {{ state_attr("sensor.anwb_top_1", "street") }}'
+              color: '#4CAF50'
+              icon: mdi:numeric-1-circle
+              icon_size: 28x28
+              latitude: |
+                [[[
+                  const state = hass.states['sensor.anwb_top_1'];
+                  return state?.attributes?.latitude || null;
+                ]]]
+              longitude: |
+                [[[
+                  const state = hass.states['sensor.anwb_top_1'];
+                  return state?.attributes?.longitude || null;
+                ]]]
+              popup_info:
+                title: '🏆 #1 - {{ state_attr("sensor.anwb_top_1", "street") }}'
+                body: |
+                  💶 **{{ state_attr("sensor.anwb_top_1", "price_per_kwh") }} €/kWh**
+                  ⚡ {{ state_attr("sensor.anwb_top_1", "max_power_kw") }} kW
+                  📍 {{ state_attr("sensor.anwb_top_1", "postal_code") }} {{ state_attr("sensor.anwb_top_1", "city") }}
+                  🔋 {{ state_attr("sensor.anwb_top_1", "charge_points_available") }}/{{ state_attr("sensor.anwb_top_1", "charge_points_total") }} beschikbaar
+                  {% if state_attr("sensor.anwb_top_1", "detour_km") > 0 %}
+                  📍 +{{ (state_attr("sensor.anwb_top_1", "detour_km") or 0) | round(1) }} km omrijden
+                  {% else %}
+                  ✅ Op route
+                  {% endif %}
+
+            - entity: sensor.anwb_top_2
+              name: '2. {{ state_attr("sensor.anwb_top_2", "street") }}'
+              color: '#FFC107'
+              icon: mdi:numeric-2-circle
+              icon_size: 28x28
+              latitude: |
+                [[[
+                  const state = hass.states['sensor.anwb_top_2'];
+                  return state?.attributes?.latitude || null;
+                ]]]
+              longitude: |
+                [[[
+                  const state = hass.states['sensor.anwb_top_2'];
+                  return state?.attributes?.longitude || null;
+                ]]]
+              popup_info:
+                title: '#2 - {{ state_attr("sensor.anwb_top_2", "street") }}'
+                body: |
+                  💶 {{ state_attr("sensor.anwb_top_2", "price_per_kwh") }} €/kWh
+                  ⚡ {{ state_attr("sensor.anwb_top_2", "max_power_kw") }} kW
+                  📍 {{ state_attr("sensor.anwb_top_2", "postal_code") }} {{ state_attr("sensor.anwb_top_2", "city") }}
+
+            - entity: sensor.anwb_top_3
+              name: '3. {{ state_attr("sensor.anwb_top_3", "street") }}'
+              color: '#FF9800'
+              icon: mdi:numeric-3-circle
+              icon_size: 28x28
+              latitude: |
+                [[[
+                  const state = hass.states['sensor.anwb_top_3'];
+                  return state?.attributes?.latitude || null;
+                ]]]
+              longitude: |
+                [[[
+                  const state = hass.states['sensor.anwb_top_3'];
+                  return state?.attributes?.longitude || null;
+                ]]]
+
+            - entity: sensor.anwb_top_4
+              name: '4. {{ state_attr("sensor.anwb_top_4", "street") }}'
+              color: '#F44336'
+              icon: mdi:numeric-4-circle
+              icon_size: 28x28
+              latitude: |
+                [[[
+                  const state = hass.states['sensor.anwb_top_4'];
+                  return state?.attributes?.latitude || null;
+                ]]]
+              longitude: |
+                [[[
+                  const state = hass.states['sensor.anwb_top_4'];
+                  return state?.attributes?.longitude || null;
+                ]]]
+
+            - entity: sensor.anwb_top_5
+              name: '5. {{ state_attr("sensor.anwb_top_5", "street") }}'
+              color: '#E91E63'
+              icon: mdi:numeric-5-circle
+              icon_size: 28x28
+              latitude: |
+                [[[
+                  const state = hass.states['sensor.anwb_top_5'];
+                  return state?.attributes?.latitude || null;
+                ]]]
+              longitude: |
+                [[[
+                  const state = hass.states['sensor.anwb_top_5'];
+                  return state?.attributes?.longitude || null;
+                ]]]
+
+            - entity: sensor.anwb_top_6
+              name: '6. {{ state_attr("sensor.anwb_top_6", "street") }}'
+              color: '#9C27B0'
+              icon: mdi:numeric-6-circle
+              icon_size: 28x28
+              latitude: |
+                [[[
+                  const state = hass.states['sensor.anwb_top_6'];
+                  return state?.attributes?.latitude || null;
+                ]]]
+              longitude: |
+                [[[
+                  const state = hass.states['sensor.anwb_top_6'];
+                  return state?.attributes?.longitude || null;
+                ]]]
+
+            - entity: sensor.anwb_top_7
+              name: '7. {{ state_attr("sensor.anwb_top_7", "street") }}'
+              color: '#673AB7'
+              icon: mdi:numeric-7-circle
+              icon_size: 28x28
+              latitude: |
+                [[[
+                  const state = hass.states['sensor.anwb_top_7'];
+                  return state?.attributes?.latitude || null;
+                ]]]
+              longitude: |
+                [[[
+                  const state = hass.states['sensor.anwb_top_7'];
+                  return state?.attributes?.longitude || null;
+                ]]]
+
+            - entity: sensor.anwb_top_8
+              name: '8. {{ state_attr("sensor.anwb_top_8", "street") }}'
+              color: '#3F51B5'
+              icon: mdi:numeric-8-circle
+              icon_size: 28x28
+              latitude: |
+                [[[
+                  const state = hass.states['sensor.anwb_top_8'];
+                  return state?.attributes?.latitude || null;
+                ]]]
+              longitude: |
+                [[[
+                  const state = hass.states['sensor.anwb_top_8'];
+                  return state?.attributes?.longitude || null;
+                ]]]
+
+            - entity: sensor.anwb_top_9
+              name: '9. {{ state_attr("sensor.anwb_top_9", "street") }}'
+              color: '#2196F3'
+              icon: mdi:numeric-9-circle
+              icon_size: 28x28
+              latitude: |
+                [[[
+                  const state = hass.states['sensor.anwb_top_9'];
+                  return state?.attributes?.latitude || null;
+                ]]]
+              longitude: |
+                [[[
+                  const state = hass.states['sensor.anwb_top_9'];
+                  return state?.attributes?.longitude || null;
+                ]]]
+
+            - entity: sensor.anwb_top_10
+              name: '10. {{ state_attr("sensor.anwb_top_10", "street") }}'
+              color: '#00BCD4'
+              icon: mdi:numeric-10-circle
+              icon_size: 28x28
+              latitude: |
+                [[[
+                  const state = hass.states['sensor.anwb_top_10'];
+                  return state?.attributes?.latitude || null;
+                ]]]
+              longitude: |
+                [[[
+                  const state = hass.states['sensor.anwb_top_10'];
+                  return state?.attributes?.longitude || null;
+                ]]]
+
+  # Instellingen sectie
+  - type: grid
+    columns: 1
+    cards:
+      - type: markdown
+        content: |
+          # ⚙️ Instellingen
+        card_mod:
+          style:
+            ha-card:
+              - background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+              - color: white
+              - padding: 20px
+              - border-radius: 10px
+              - margin-bottom: 0px
+
+  - type: grid
+    columns: 1
+    cards:
+      - type: vertical-stack
+        cards:
+          # Bestemming input
+          - type: entities
+            title: 📍 Bestemming
+            entities:
+              - entity: input_text.anwb_destination
+                name: Waar wil je heen?
+                icon: mdi:map-marker
+
+          # Omrijafstand slider
+          - type: entities
+            title: 🛣️ Maximale omrijafstand
+            entities:
+              - entity: input_number.anwb_max_detour_km
+                name: Hoeveel extra km accepteer je?
+                icon: mdi:roads
+                slider:
+                  min: 1
+                  max: 100
+                  step: 1
+
+          # Ladertype selector
+          - type: entities
+            title: ⚡ Ladertype
+            entities:
+              - entity: input_select.anwb_charger_type
+                name: Welk type laadpaal?
+                icon: mdi:ev-station
+
+  # Update knop
+  - type: grid
+    columns: 1
+    cards:
+      - type: custom:button-card
+        entity: sensor.anwb_charger_count
+        name: 🔍 Laadpalen zoeken
+        icon: mdi:refresh
+        show_entity_picture: false
+        show_state: true
+        show_name: true
+        show_icon: true
+        size: 30%
+        tap_action:
+          action: call-service
+          service: homeassistant.update_entity
+          service_data:
+            entity_id:
+              - sensor.anwb_cheapest_charger
+              - sensor.anwb_charger_count
+              - sensor.anwb_top_1
+              - sensor.anwb_top_2
+              - sensor.anwb_top_3
+              - sensor.anwb_top_4
+              - sensor.anwb_top_5
+              - sensor.anwb_top_6
+              - sensor.anwb_top_7
+              - sensor.anwb_top_8
+              - sensor.anwb_top_9
+              - sensor.anwb_top_10
+        styles:
+          card:
+            - background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+            - padding: 30px 20px
+            - border-radius: 10px
+            - box-shadow: '0 4px 15px rgba(0, 0, 0, 0.2)'
+            - transition: all 0.3s ease
+            - '&:hover':
+              - box-shadow: '0 8px 25px rgba(102, 126, 234, 0.4)'
+              - transform: translateY(-2px)
+          name:
+            - font-size: 20px
+            - font-weight: bold
+            - color: white
+          icon:
+            - color: white
+            - width: 40px
+            - height: 40px
+          state:
+            - font-size: 16px
+            - color: rgba(255, 255, 255, 0.9)
+            - margin-top: 10px
+
+  # Resultaten Info
+  - type: grid
+    columns: 1
+    cards:
+      - type: markdown
+        content: |
+          ## 📊 Zoekresultaten
+          
+          **Totaal beschikbare laadpalen:** {{ states('sensor.anwb_charger_count') }}
+          
+          **Goedkoopste:** {{ state_attr('sensor.anwb_cheapest_charger', 'price_per_kwh') }} €/kWh
+        card_mod:
+          style:
+            ha-card:
+              - background-color: 'rgba(200, 200, 200, 0.1)'
+              - border-left: 4px solid #666
+              - padding: 16px
+
+  # Laadpalen lijst
+  - type: grid
+    columns: 1
+    cards:
+      - type: custom:auto-entities
+        card:
+          type: vertical-stack
+        card_param: cards
+        filter:
+          include:
+            - options:
+                type: custom:button-card
+                show_icon: true
+                show_name: false
+                show_state: false
+                tap_action:
+                  action: url
+                  url_path: |
+                    [[[
+                      return "https://www.google.com/maps/dir/?api=1&destination="
+                        + entity.attributes.latitude
+                        + ","
+                        + entity.attributes.longitude;
+                    ]]]
+                icon: |
+                  [[[
+                    if (
+                      entity.attributes.charge_points_available ==
+                      entity.attributes.charge_points_total
+                    ) {
+                      return "mdi:ev-station";
+                    }
+
+                    if (
+                      entity.attributes.charge_points_available > 0
+                    ) {
+                      return "mdi:lightning-bolt";
+                    }
+
+                    return "mdi:ev-plug-tesla";
+                  ]]]
+                styles:
+                  grid:
+                    - grid-template-areas: |
+                        "i name price"
+                        "i address price"
+                        "i details power"
+                        "i detour session"
+                    - grid-template-columns: 40px 1fr auto
+                    - grid-template-rows: min-content min-content min-content min-content
+                  card:
+                    - padding: 12px
+                    - background-color: |
+                      [[[
+                        if (entity.attributes.detour_km < 5) {
+                          return 'rgba(76, 175, 80, 0.1)';
+                        }
+                        if (entity.attributes.detour_km < 10) {
+                          return 'rgba(255, 193, 7, 0.1)';
+                        }
+                        return 'rgba(244, 67, 54, 0.1)';
+                      ]]]
+                    - border-left: 4px solid |
+                      [[[
+                        if (entity.attributes.detour_km < 5) {
+                          return '#4CAF50';
+                        }
+                        if (entity.attributes.detour_km < 10) {
+                          return '#FFC107';
+                        }
+                        return '#F44336';
+                      ]]]
+                  img_cell:
+                    - align-self: start
+                  icon:
+                    - width: 28px
+                    - height: 28px
+                    - color: |
+                      [[[
+                        if (
+                          entity.attributes.charge_points_available ==
+                          entity.attributes.charge_points_total
+                        ) {
+                          return "#4CAF50";
+                        }
+
+                        if (
+                          entity.attributes.charge_points_available > 0
+                        ) {
+                          return "#FFC107";
+                        }
+
+                        return "#F44336";
+                      ]]]
+                  custom_fields:
+                    name:
+                      - font-size: 16px
+                      - font-weight: bold
+                      - text-align: left
+                      - justify-self: start
+                      - width: 100%
+                    address:
+                      - font-size: 13px
+                      - color: var(--secondary-text-color)
+                      - text-align: left
+                    details:
+                      - font-size: 13px
+                      - text-align: left
+                    power:
+                      - font-size: 13px
+                      - font-weight: bold
+                      - justify-self: end
+                    detour:
+                      - font-size: 12px
+                      - color: var(--secondary-text-color)
+                      - text-align: left
+                      - justify-self: start
+                    session:
+                      - font-size: 12px
+                      - color: var(--secondary-text-color)
+                      - text-align: left
+                      - justify-self: start
+                      - width: 100%
+                    price:
+                      - font-size: 18px
+                      - font-weight: bold
+                      - color: '#00C853'
+                      - justify-self: end
+                custom_fields:
+                  name: |
+                    [[[
+                      return entity.state;
+                    ]]]
+                  address: |
+                    [[[
+                      return ""
+                        + entity.attributes.street
+                        + "<br>"
+                        + entity.attributes.postal_code
+                        + " "
+                        + entity.attributes.city;
+                    ]]]
+                  details: |
+                    [[[
+                      return ""
+                        + entity.attributes.charge_points_available
+                        + "/"
+                        + entity.attributes.charge_points_total
+                        + " vrij";
+                    ]]]
+                  power: |
+                    [[[
+                      return "⚡"
+                        + entity.attributes.max_power_kw
+                        + " kW";
+                    ]]]
+                  detour: |
+                    [[[
+                      const detour = entity.attributes.detour_km || 0;
+                      if (detour === 0) {
+                        return "✅ Op route";
+                      }
+                      return "📍 +" + detour.toFixed(1) + " km";
+                    ]]]
+                  session: |
+                    [[[
+                      return "€"
+                        + Number(entity.attributes.session_price || 0)
+                            .toFixed(2)
+                        + "/sessie";
+                    ]]]
+                  price: |
+                    [[[
+                      return "€"
+                        + Number(entity.attributes.price_per_kwh || 0)
+                            .toFixed(4)
+                        + "/kWh";
+                    ]]]
+              entity_id: sensor.anwb_top_*
+          exclude:
+            - state: Geen laadpaal
+          sort:
+            method: attribute
+            attribute: rank
+            numeric: true
