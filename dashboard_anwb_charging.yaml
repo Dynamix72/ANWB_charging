@@ -425,7 +425,7 @@ sections:
     cards:
       - type: markdown
         content: |
-          # 📋 Alle beschikbare laadpalen
+          # 📋 Alle beschikbare laadpalen (Top 10)
         card_mod:
           style:
             ha-card:
@@ -453,22 +453,22 @@ sections:
                   action: url
                   url_path: |
                     [[[
-                      return "https://www.google.com/maps/dir/?api=1&destination="
-                        + entity.attributes.latitude
-                        + ","
-                        + entity.attributes.longitude;
+                      const attrs = entity.attributes;
+                      if (attrs && attrs.latitude && attrs.longitude) {
+                        return "https://www.google.com/maps/dir/?api=1&destination="
+                          + attrs.latitude + "," + attrs.longitude;
+                      }
+                      return "https://maps.google.com";
                     ]]]
                 icon: |
                   [[[
-                    if (
-                      entity.attributes.charge_points_available ==
-                      entity.attributes.charge_points_total
-                    ) {
+                    const avail = entity.attributes?.charge_points_available || 0;
+                    const total = entity.attributes?.charge_points_total || 1;
+                    
+                    if (avail === total) {
                       return "mdi:ev-station";
                     }
-                    if (
-                      entity.attributes.charge_points_available > 0
-                    ) {
+                    if (avail > 0) {
                       return "mdi:lightning-bolt";
                     }
                     return "mdi:ev-plug-tesla";
@@ -486,20 +486,22 @@ sections:
                     - padding: 12px
                     - background-color: |
                       [[[
-                        if (entity.attributes.detour_km < 5) {
+                        const detour = entity.attributes?.detour_km || 0;
+                        if (detour < 5) {
                           return 'rgba(76, 175, 80, 0.1)';
                         }
-                        if (entity.attributes.detour_km < 10) {
+                        if (detour < 10) {
                           return 'rgba(255, 193, 7, 0.1)';
                         }
                         return 'rgba(244, 67, 54, 0.1)';
                       ]]]
                     - border-left: 4px solid |
                       [[[
-                        if (entity.attributes.detour_km < 5) {
+                        const detour = entity.attributes?.detour_km || 0;
+                        if (detour < 5) {
                           return '#4CAF50';
                         }
-                        if (entity.attributes.detour_km < 10) {
+                        if (detour < 10) {
                           return '#FFC107';
                         }
                         return '#F44336';
@@ -511,15 +513,13 @@ sections:
                     - height: 28px
                     - color: |
                       [[[
-                        if (
-                          entity.attributes.charge_points_available ==
-                          entity.attributes.charge_points_total
-                        ) {
+                        const avail = entity.attributes?.charge_points_available || 0;
+                        const total = entity.attributes?.charge_points_total || 1;
+                        
+                        if (avail === total) {
                           return "#4CAF50";
                         }
-                        if (
-                          entity.attributes.charge_points_available > 0
-                        ) {
+                        if (avail > 0) {
                           return "#FFC107";
                         }
                         return "#F44336";
@@ -561,52 +561,50 @@ sections:
                 custom_fields:
                   name: |
                     [[[
-                      return entity.state;
+                      return entity.state || 'N/A';
                     ]]]
                   address: |
                     [[[
-                      return ""
-                        + entity.attributes.street
-                        + "<br>"
-                        + entity.attributes.postal_code
-                        + " "
-                        + entity.attributes.city;
+                      const attrs = entity.attributes;
+                      if (attrs?.street) {
+                        return (attrs.street || '') + "<br>" + 
+                               (attrs.postal_code || '') + " " + 
+                               (attrs.city || '');
+                      }
+                      return 'N/A';
                     ]]]
                   details: |
                     [[[
-                      return ""
-                        + entity.attributes.charge_points_available
-                        + "/"
-                        + entity.attributes.charge_points_total
-                        + " vrij";
+                      const avail = entity.attributes?.charge_points_available || 0;
+                      const total = entity.attributes?.charge_points_total || 0;
+                      return avail + "/" + total + " vrij";
                     ]]]
                   power: |
                     [[[
-                      return "⚡"
-                        + entity.attributes.max_power_kw
-                        + " kW";
+                      const power = entity.attributes?.max_power_kw || 'N/A';
+                      return "⚡" + power + " kW";
                     ]]]
                   detour: |
                     [[[
-                      const detour = entity.attributes.detour_km || 0;
+                      const detour = entity.attributes?.detour_km;
+                      if (detour === null || detour === undefined) {
+                        return "📍 Info";
+                      }
                       if (detour === 0) {
                         return "✅ Op route";
                       }
-                      return "📍 +" + detour.toFixed(1) + " km";
+                      return "📍 +" + parseFloat(detour).toFixed(1) + " km";
                     ]]]
                   session: |
                     [[[
-                      return "€"
-                        + Number(entity.attributes.session_price || 0)
-                            .toFixed(2)
-                        + "/sessie";
+                      const price = entity.attributes?.session_price || 0;
+                      return "€" + parseFloat(price).toFixed(2) + "/s";
                     ]]]
                   price: |
                     [[[
-                      return "€"
-                        + Number(entity.attributes.price_per_kwh || 0)
-                            .toFixed(4)
-                        + "/kWh";
+                      const price = entity.attributes?.price_per_kwh || 'N/A';
+                      if (price === 'N/A') return price;
+                      return "€" + parseFloat(price).toFixed(4) + "/kWh";
                     ]]]
               entity_id: sensor.anwb_top_*
           exclude:
