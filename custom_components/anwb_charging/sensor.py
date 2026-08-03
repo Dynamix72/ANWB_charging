@@ -167,7 +167,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
     )
 
     await coordinator.async_config_entry_first_refresh()
-    
+ 
     route_coordinator = RouteCoordinator(
         hass,
         entry,
@@ -180,7 +180,9 @@ async def async_setup_entry(hass, entry, async_add_entities):
         or entry.data.get(CONF_ORS_API_KEY)
         or "",
     )
-    
+
+    await route_coordinator.async_config_entry_first_refresh()
+
     entities: List[SensorEntity] = [
         CheapestChargerSensor(coordinator, entry.entry_id),
         ChargerCountSensor(coordinator, entry.entry_id),
