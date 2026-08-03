@@ -66,21 +66,21 @@ def sorted_chargers(data: Dict, hass=None) -> List[Dict]:
             for charger in chargers:
                 info = extract_charger_info(charger)
                 power = info.get("max_power_kw", 0)
-
-            if mode == "AC laders":
-                if power < 50:
+    
+                if mode == "AC laders":
+                    if power < 50:
+                        filtered.append(charger)
+                
+                elif mode == "Snelladers":
+                    if 50 <= power < 100:
+                        filtered.append(charger)
+                
+                elif mode == "Ultrasnelladers":
+                    if power >= 100:
+                        filtered.append(charger)
+                
+                else:
                     filtered.append(charger)
-            
-            elif mode == "Snelladers":
-                if 50 <= power < 100:
-                    filtered.append(charger)
-            
-            elif mode == "Ultrasnelladers":
-                if power >= 100:
-                    filtered.append(charger)
-            
-            else:
-                filtered.append(charger)
 
             chargers = filtered
 
