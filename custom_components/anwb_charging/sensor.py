@@ -396,8 +396,24 @@ class RouteGeoJsonSensor(CoordinatorEntity, SensorEntity):
     @property
     def native_value(self):
         return "route"
-
     @property
     def extra_state_attributes(self):
         route = self.coordinator.data.get("route", {})
-        return {"geojson": route.get("geojson", {})}
+        geojson = route.get("geojson", {})
+    
+        latitude = None
+        longitude = None
+    
+        try:
+            coords = geojson["features"][0]["geometry"]["coordinates"][0]
+            longitude = coords[0]
+            latitude = coords[1]
+        except Exception:
+            pass
+    
+        return {
+            "geojson": geojson,
+            "latitude": latitude,
+            "longitude": longitude,
+        }
+
