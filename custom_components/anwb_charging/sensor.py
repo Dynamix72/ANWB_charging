@@ -254,6 +254,11 @@ class TopChargerSensor(AnwbBaseSensor):
         return chargers[index]
 
     @property
+    def available(self) -> bool:
+        """Alleen beschikbaar als er een laadpaal bestaat."""
+        return self._charger() is not None
+    
+    @property
     def native_value(self) -> Optional[str]:
         charger = self._charger()
         if charger is None:
