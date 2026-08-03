@@ -153,7 +153,9 @@ async def async_setup_entry(hass, entry, async_add_entities):
     coordinator = AnwbCoordinator(
         hass,
         entry.data.get("device_tracker"),
-        entry.data.get("radius"),
+        entry.options.get("radius")
+        or entry.data.get("radius")
+        or 10,
     )
 
     await coordinator.async_config_entry_first_refresh()
