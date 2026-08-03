@@ -15,6 +15,11 @@ from typing import Any, Dict, List, Optional
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .coordinator import AnwbCoordinator
+from .route_coordinator import RouteCoordinator
+from .const import (
+    CONF_ORS_API_KEY,
+    DEFAULT_MIN_POWER_KW,
+)
 
 DOMAIN = "anwb_charging"
 
@@ -162,10 +167,28 @@ async def async_setup_entry(hass, entry, async_add_entities):
     )
 
     await coordinator.async_config_entry_first_refresh()
-
+    
+    route_coordinator = RouteCoordinator(
+        hass,
+        entry,
+        entry.data.get("device_tracker"),
+        entry.options.get("radius")
+        or entry.data.get("radius")
+        or 10,
+        DEFAULT_MIN_POWER_KW,
+        entry.options.get(CONF_ORS_API_KEY)
+        or entry.data.get(CONF_ORS_API_KEY)
+        or "",
+    )
+    
     entities: List[SensorEntity] = [
         CheapestChargerSensor(coordinator, entry.entry_id),
         ChargerCountSensor(coordinator, entry.entry_id),
+    
+        RouteGeoJsonSensor(
+            route_coordinator,
+            entry.entry_id,
+        ),
     ]
 
     # Create top N sensors (1..10)
