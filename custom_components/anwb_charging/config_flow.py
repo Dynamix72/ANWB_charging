@@ -7,9 +7,6 @@ Dit bestand definieert:
 
 Gebruiker kan instellen:
 - Device Tracker (GPS bron)
-- Bestemming (waar wil je heen)
-- Maximale omrijafstand (hoeveel km extra rijden accepteer je)
-- Ladertype (AC, Snellader, Ultrasnellader, of Alle)
 - OpenRouteService API Key (optioneel, voor routeberekening)
 """
 
@@ -56,9 +53,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         
         Gebruiker moet selecteren:
         - Device Tracker (voor GPS locatie)
-        - Bestemming (waar wil je heen)
-        - Maximale omrijafstand (hoeveel km extra rijden is ok)
-        - Ladertype (welke soort laadpalen)
         - ORS API Key (optioneel, voor betere routeberekening)
         """
         if user_input is not None:
@@ -139,9 +133,6 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
     """Handle instellingen wijzigen na initiële setup.
     
     Gebruiker kan wijzigen:
-    - Bestemming
-    - Maximale omrijafstand
-    - Ladertype
     - ORS API Key
     """
 
