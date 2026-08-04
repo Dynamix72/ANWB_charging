@@ -177,10 +177,11 @@ class RouteCoordinator(
         else:
             charger_type = DEFAULT_CHARGER_TYPE
         
-                _LOGGER.warning(
-                    "Geselecteerd ladertype: %s",
-                    charger_type,
+        _LOGGER.warning(
+            "Geselecteerd ladertype: %s",
+            charger_type,
         )
+       
         _LOGGER.warning(
             "Actief laadfilter: %s",
             charger_type,
