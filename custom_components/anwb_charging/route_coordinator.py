@@ -138,10 +138,14 @@ class RouteCoordinator(
             CONF_CHARGER_TYPE,
             DEFAULT_CHARGER_TYPE
         )
-        destination = self._get_config_value(
-            CONF_DESTINATION,
-            ""
+        destination_entity = self.hass.states.get(
+            "input_text.anwb_route_destination"
         )
+        
+        if destination_entity:
+            destination = (destination_entity.state or "").strip()
+        else:
+            destination = ""
 
         # Haal huidige voertuigpositie op via device tracker
         tracker = self.hass.states.get(
