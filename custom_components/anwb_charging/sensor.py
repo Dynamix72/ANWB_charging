@@ -195,7 +195,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
 
     # Create top N sensors (1..10)
     for rank in range(1, 11):
-        entities.append(TopChargerSensor(coordinator, entry.entry_id, rank))
+        entities.append(TopChargerSensor(route_coordinator, entry.entry_id, rank))
 
     async_add_entities(entities)
 
@@ -271,12 +271,28 @@ class TopChargerSensor(AnwbBaseSensor):
         )
         self.rank = rank
 
-    def _charger(self) -> Optional[Dict]:
-        chargers = sorted_chargers(self.coordinator.data, self.coordinator.hass)
+    def _charger(self) -> Optionalchargers = (
+            self.coordinator.data or {}
+        ).get(
+            "chargers",
+            []
+        )
+    
         index = self.rank - 1
+    
         if index < 0 or index >= len(chargers):
             return None
-        return chargers[index]
+    
+        charger_data = chargers[index]
+    
+        if isinstance(charger_data, dict):
+            return charger_data.get(
+                "charger",
+                charger_data,
+            )
+    
+        return None
+    
 
     @property
     def available(self) -> bool:
