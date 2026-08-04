@@ -398,7 +398,7 @@ class RouteGeoJsonSensor(CoordinatorEntity, SensorEntity):
         return "route"
     @property
     def extra_state_attributes(self):
-        route = self.coordinator.data.get("route", {})
+        route = (self.coordinator.data or {}).get("route") or {}
         geojson = route.get("geojson", {})
     
         latitude = None
