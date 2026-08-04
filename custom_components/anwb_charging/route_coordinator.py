@@ -10,8 +10,6 @@ Workflow:
 3. Bij fout of geen bestemming: FALLBACK naar simpele laadpaalzoeken op huidige locatie
 4. Haalt beschikbare laadpalen op via ANWB API
 5. Filtert laadpalen op basis van route (indien beschikbaar) of gewoon beschikbaarheid
-6. Berekent omrijafstand voor elke laadpaal (indien route beschikbaar)
-7. Sorteert op prijs en omrijafstand
 8. Retourneert gefilterde en gesorteerde resultaten
 
 Updates: Geen automatische updates - alleen op knopdruk via UI
@@ -44,6 +42,42 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
+from geopy.distance import geodesic
+
+
+def point_on_route(route_points, target_km):
+    """
+    Zoek een punt op de route op target_km vanaf de start.
+    """
+
+    travelled = 0.0
+
+    for i in range(len(route_points) - 1):
+
+        p1 = (
+            route_points[i][1],
+            route_points[i][0],
+        )
+
+        p2 = (
+            route_points[i + 1][1],
+            route_points[i + 1][0],
+        )
+
+        segment = geodesic(p1, p2).km
+
+        if travelled + segment >= target_km:
+            return {
+                "latitude": p2[0],
+                "longitude": p2[1],
+            }
+
+        travelled += segment
+
+    return {
+        "latitude": route_points[-1][1],
+        "longitude": route_points[-1][0],
+    }
 
 class RouteCoordinator(
     DataUpdateCoordinator
@@ -144,6 +178,14 @@ class RouteCoordinator(
         
         if destination_entity:
             destination = (destination_entity.state or "").strip()
+            distance_entity = self.hass.states.get(
+                "input_number.anwb_route_distance"
+            )
+            
+            try:
+                target_km = float(distance_entity.state)
+            except Exception:
+                target_km = 100
         else:
             destination = ""
 
@@ -213,7 +255,18 @@ class RouteCoordinator(
                 vehicle_lon,
                 destination,
             )
-
+            
+            search_point = point_on_route(
+                route["coordinates"],
+                target_km,
+            )
+            
+            _LOGGER.info(
+                "Zoekpunt op %.0f km van route: %.5f, %.5f",
+                target_km,
+                search_point["latitude"],
+                search_point["longitude"],
+            )
             _LOGGER.info(
                 "Route afstand=%s km tijd=%s min",
                 route["distance_km"],
@@ -235,8 +288,8 @@ class RouteCoordinator(
         # STAP 2: Haal laadpalen op van ANWB
         anwb_data = await (
             self.anwb_api.get_chargers(
-                vehicle_lat,
-                vehicle_lon,
+                search_point["latitude"],
+                search_point["longitude"],
                 self.radius,
             )
         )
@@ -255,37 +308,88 @@ class RouteCoordinator(
         # Filters:
         # - Laadpaal beschikbaar (AVAILABLE of CHARGING status)
         # - Juiste ladertype (AC/Snellader/Ultrasnellader)
-        # - Maximaal 5 km van de route af
         # - Voor de auto op de route
-        filtered = (
-            filter_chargers_on_route(
-                chargers=chargers,
-                route_points=route[
-                    "coordinates"
-                ],
-                vehicle_lat=vehicle_lat,
-                vehicle_lon=vehicle_lon,
-                charger_mode=charger_type,
-                min_power_kw=(
-                    self.min_power_kw
-                ),
-                max_route_distance_km=5,  # Vast ingesteld - niet aanpasbaar
+        filtered = []
+        
+        for charger in chargers:
+        
+            price_data = charger.get("price")
+            if not price_data:
+                continue
+        
+            evses = charger.get(
+                "electricVehicleSupplyEquipment",
+                []
             )
+        
+            statuses = [
+                evse.get("status")
+                for evse in evses
+                if isinstance(evse, dict)
+            ]
+        
+            if (
+                "AVAILABLE" not in statuses
+                and "CHARGING" not in statuses
+            ):
+                continue
+        
+            max_power = 0
+        
+            for evse in evses:
+                for connector in evse.get(
+                    "connectors",
+                    []
+                ):
+                    max_power = max(
+                        max_power,
+                        connector.get(
+                            "maxPowerInKW",
+                            0
+                        )
+                    )
+        
+            # ladertype filter
+            if charger_type == "AC laders" and max_power >= 50:
+                continue
+        
+            if charger_type == "Snelladers" and (
+                max_power < 50
+                or max_power >= 150
+            ):
+                continue
+        
+            if charger_type == "Ultrasnelladers" and max_power < 150:
+                continue
+        
+            try:
+                price = float(
+                    price_data.get(
+                        "price",
+                        999
+                    )
+                )
+            except Exception:
+                continue
+        
+            filtered.append({
+                "charger": charger,
+                "price": price,
+                "power": max_power,
+            })
+        
+        # goedkoopste eerst
+        filtered.sort(
+            key=lambda c: c["price"]
         )
+        
+        # top 10
+        filtered = filtered[:10]
 
         _LOGGER.info(
             "Route laadpalen over=%s",
             len(filtered),
         )
-
-
-        # Alleen sorteren op prijs
-        filtered.sort(
-            key=lambda c: c["price"]
-        )
-        
-        # Top 10 goedkoopste laadpalen op de route
-        filtered = filtered[:10]
         
         _LOGGER.info(
             "Top 10 goedkoopste laadpalen op route=%s",
