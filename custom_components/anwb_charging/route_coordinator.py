@@ -278,90 +278,17 @@ class RouteCoordinator(
             len(filtered),
         )
 
-        # STAP 4: Bereken omrijafstand voor elke laadpaal
-        # Dit is kritisch: bereken extra kilometers en minuten nodig
-        # als je de laadpaal bezoekt onderweg naar bestemming
-        for charger in filtered:
 
-            try:
-
-                detour = await (
-                    self.route_api.calculate_detour(
-                        start_lat=vehicle_lat,
-                        start_lon=vehicle_lon,
-
-                        charger_lat=
-                        charger[
-                            "charger"
-                        ][
-                            "coordinates"
-                        ][
-                            "latitude"
-                        ],
-
-                        charger_lon=
-                        charger[
-                            "charger"
-                        ][
-                            "coordinates"
-                        ][
-                            "longitude"
-                        ],
-
-                        destination=
-                        destination,
-                    )
-                )
-
-                charger[
-                    "detour_km"
-                ] = detour[
-                    "detour_km"
-                ]
-
-                charger[
-                    "extra_minutes"
-                ] = detour[
-                    "extra_minutes"
-                ]
-
-            except Exception as err:
-
-                _LOGGER.error(
-                    "Omrijberekening mislukt: %s",
-                    err,
-                )
-
-                # Bij fout, zet omrijafstand op 999 km zodat laadpaal
-                # niet in resultaten komt
-                charger[
-                    "detour_km"
-                ] = 999
-
-                charger[
-                    "extra_minutes"
-                ] = 999
-
-        # STAP 5: Filter op maximale omrijafstand
-        # Verwijder laadpalen die meer omrijden vereisen dan ingesteld
-        filtered = [
-            c
-            for c in filtered
-            if c["detour_km"] <= max_detour_km
-        ]
-
-        # STAP 6: Sorteer op prijs (goedkoopste eerst)
-        # Dan op omrijafstand (minst omrijden eerst)
+        # Alleen sorteren op prijs
         filtered.sort(
-            key=lambda c: (
-                c["price"],
-                c["detour_km"],
-            )
+            key=lambda c: c["price"]
         )
-
+        
+        # Top 10 goedkoopste laadpalen op de route
+        filtered = filtered[:10]
+        
         _LOGGER.info(
-            "Resultaat na omrijfilter (max %s km)=%s",
-            max_detour_km,
+            "Top 10 goedkoopste laadpalen op route=%s",
             len(filtered),
         )
 
@@ -373,7 +300,6 @@ class RouteCoordinator(
                 "longitude": vehicle_lon,
             },
             "destination": destination,
-            "max_detour_km": max_detour_km,
             "charger_type": charger_type,
         }
 
@@ -467,7 +393,7 @@ class RouteCoordinator(
         )
 
         return {
-            "route": None,  # Geen route berekend
+            "route": {},  # Geen route berekend
             "chargers": filtered,
             "vehicle": {
                 "latitude": vehicle_lat,
