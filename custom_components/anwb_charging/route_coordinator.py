@@ -322,7 +322,19 @@ class RouteCoordinator(
             "value",
             []
         )
-
+        
+        if chargers:
+            c = chargers[0]
+        
+            _LOGGER.warning(
+                "Eerste laadpaal: %s",
+                c.get("title")
+            )
+        
+            _LOGGER.warning(
+                "Coords: %s",
+                c.get("coordinates")
+            )
         _LOGGER.info(
             "ANWB laadpalen gevonden=%s",
             len(chargers),
