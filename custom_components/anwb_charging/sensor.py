@@ -271,7 +271,8 @@ class TopChargerSensor(AnwbBaseSensor):
         )
         self.rank = rank
 
-    def _charger(self) -> Optionalchargers = (
+    def _charger(self):
+        chargers = (
             self.coordinator.data or {}
         ).get(
             "chargers",
@@ -292,7 +293,7 @@ class TopChargerSensor(AnwbBaseSensor):
             )
     
         return None
-    
+     
 
     @property
     def available(self) -> bool:
