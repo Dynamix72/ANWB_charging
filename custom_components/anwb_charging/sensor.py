@@ -253,8 +253,9 @@ class ChargerCountSensor(AnwbBaseSensor):
         self._attr_icon = "mdi:ev-station"
 
     @property
-    def native_value(self) -> Optionaldata = self.coordinator.data
-
+    def native_value(self) -> int:
+        data = self.coordinator.data
+        
         if not data:
             return 0
 
