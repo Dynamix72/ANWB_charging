@@ -105,38 +105,38 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         self.entry = entry
 
     async def async_step_init(self, user_input=None):
-    """Toon instellingen formulier."""
-
-    if user_input is not None:
-        self.hass.config_entries.async_update_entry(
-            self.entry,
-            options={
-                CONF_ORS_API_KEY: user_input.get(
-                    CONF_ORS_API_KEY,
-                    ""
-                )
-            },
-        )
-        return self.async_create_entry(title="", data={})
-
-    current_ors_key = (
-        self.entry.options.get(CONF_ORS_API_KEY)
-        or self.entry.data.get(CONF_ORS_API_KEY)
-        or ""
-    )
-
-    return self.async_show_form(
-        step_id="init",
-        data_schema=vol.Schema(
-            {
-                vol.Optional(
-                    CONF_ORS_API_KEY,
-                    default=current_ors_key,
-                ): TextSelector(
-                    TextSelectorConfig(
-                        multiline=False
+        """Toon instellingen formulier."""
+    
+        if user_input is not None:
+            self.hass.config_entries.async_update_entry(
+                self.entry,
+                options={
+                    CONF_ORS_API_KEY: user_input.get(
+                        CONF_ORS_API_KEY,
+                        ""
                     )
-                ),
-            }
-        ),
-    )
+                },
+            )
+            return self.async_create_entry(title="", data={})
+    
+        current_ors_key = (
+            self.entry.options.get(CONF_ORS_API_KEY)
+            or self.entry.data.get(CONF_ORS_API_KEY)
+            or ""
+        )
+    
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(
+                        CONF_ORS_API_KEY,
+                        default=current_ors_key,
+                    ): TextSelector(
+                        TextSelectorConfig(
+                            multiline=False
+                        )
+                    ),
+                }
+            ),
+        )
