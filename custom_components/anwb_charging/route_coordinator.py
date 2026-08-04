@@ -244,9 +244,8 @@ class RouteCoordinator(
         route = None
         try:
             _LOGGER.info(
-                "Route berekenen naar %s (max omrijden: %s km, ladertype: %s)",
+                "Route berekenen naar %s ( ladertype: %s)",
                 destination,
-                max_detour_km,
                 charger_type,
             )
 
@@ -256,11 +255,36 @@ class RouteCoordinator(
                 destination,
             )
             
+            _LOGGER.warning(
+                "Eerste routepunt: %s",
+                route["coordinates"][0]
+            )
+            
+            _LOGGER.warning(
+                "Laatste routepunt: %s",
+                route["coordinates"][-1]
+            )
+            
+            _LOGGER.warning(
+                "Route afstand: %.1f km",
+                route["distance_km"]
+            )            
             search_point = point_on_route(
                 route["coordinates"],
                 target_km,
             )
+           
+            _LOGGER.warning(
+                "Zoekpunt op route: %.5f, %.5f",
+                search_point["latitude"],
+                search_point["longitude"]
+            )
             
+            _LOGGER.warning(
+                "Auto positie: %.5f, %.5f",
+                vehicle_lat,
+                vehicle_lon
+            )
             _LOGGER.info(
                 "Zoekpunt op %.0f km van route: %.5f, %.5f",
                 target_km,
