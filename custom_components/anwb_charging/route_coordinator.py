@@ -567,14 +567,51 @@ class RouteCoordinator(
                 continue
 
             # Extract prijs
-            price_data = charger.get("price", {})
-            if not price_data:
-                price = 999
+            price_data = charger.get("price")
+            
+            if (
+                price_data
+                and price_data.get("price") is not None
+            ):
+                price = float(
+                    price_data.get("price")
+                )
+            
             else:
-                try:
-                    price = float(price_data.get("price", 999))
-                except Exception:
-                    price = 999
+                energy_prices = []
+            
+                for evse in charger.get(
+                    "electricVehicleSupplyEquipment",
+                    []
+                ):
+                    for connector in evse.get(
+                        "connectors",
+                        []
+                    ):
+                        for tariff in connector.get(
+                            "prices",
+                            []
+                        ):
+                            for component in tariff.get(
+                                "priceComponents",
+                                []
+                            ):
+            
+                                if component.get("code") == "ENERGY":
+            
+                                    value = component.get("value")
+            
+                                    if value is not None:
+                                        energy_prices.append(
+                                            float(value)
+                                        )
+            
+                if not energy_prices:
+                    continue
+            
+                price = min(
+                    energy_prices
+                )
 
             filtered.append({
                 "charger": charger,
