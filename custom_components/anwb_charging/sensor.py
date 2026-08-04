@@ -184,8 +184,8 @@ async def async_setup_entry(hass, entry, async_add_entities):
     await route_coordinator.async_config_entry_first_refresh()
 
     entities: List[SensorEntity] = [
-        CheapestChargerSensor(coordinator, entry.entry_id),
-        ChargerCountSensor(coordinator, entry.entry_id),
+        CheapestChargerSensor(route_coordinator, entry.entry_id),
+        ChargerCountSensor(route_coordinator, entry.entry_id),
     
         RouteGeoJsonSensor(
             route_coordinator,
@@ -255,7 +255,14 @@ class ChargerCountSensor(AnwbBaseSensor):
 
     @property
     def native_value(self) -> Optional[int]:
-        chargers = sorted_chargers(self.coordinator.data, self.coordinator.hass)
+    
+        data = self.coordinator.data or {}
+    
+        chargers
+            "chargers",
+            []
+        )
+    
         return len(chargers)
 
 
