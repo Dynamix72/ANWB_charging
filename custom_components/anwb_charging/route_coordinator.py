@@ -172,6 +172,12 @@ class RouteCoordinator(
             CONF_CHARGER_TYPE,
             DEFAULT_CHARGER_TYPE
         )
+
+        _LOGGER.warning(
+            "Geselecteerd ladertype: %s",
+            charger_type,
+)
+        
         destination_entity = self.hass.states.get(
             "input_text.anwb_route_destination"
         )
@@ -418,7 +424,13 @@ class RouteCoordinator(
         filtered.sort(
             key=lambda c: c["price"]
         )
-        
+      
+        _LOGGER.warning(
+            "Laadpaal=%s vermogen=%s kW filter=%s",
+            charger.get("title"),
+            max_power,
+            charger_type,
+        ) 
         # top 10
         filtered = filtered[:10]
 
