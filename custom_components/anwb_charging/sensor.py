@@ -411,7 +411,13 @@ class RouteGeoJsonSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def native_value(self):
+        route = (self.coordinator.data or {}).get("route") or {}
+    
+        if not route.get("geojson"):
+            return "geen_route"
+    
         return "route"
+        
     @property
     def extra_state_attributes(self):
         route = (self.coordinator.data or {}).get("route") or {}
