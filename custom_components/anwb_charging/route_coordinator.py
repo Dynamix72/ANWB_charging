@@ -365,9 +365,6 @@ class RouteCoordinator(
         
         for charger in chargers:
         
-            price_data = charger.get("price")
-            if not price_data:
-                continue
         
             evses = charger.get(
                 "electricVehicleSupplyEquipment",
@@ -414,15 +411,53 @@ class RouteCoordinator(
             if charger_type == "Ultrasnelladers" and max_power < 150:
                 continue
         
-            try:
+            price_data = charger.get("price")
+            
+            # normale ANWB prijs
+            if (
+                price_data
+                and price_data.get("price") is not None
+            ):
                 price = float(
-                    price_data.get(
-                        "price",
-                        999
-                    )
+                    price_data.get("price")
                 )
-            except Exception:
-                continue
+            
+            else:
+                # fallback voor Tesla e.d.
+                energy_prices = []
+            
+                for evse in charger.get(
+                    "electricVehicleSupplyEquipment",
+                    []
+                ):
+                    for connector in evse.get(
+                        "connectors",
+                        []
+                    ):
+                        for tariff in connector.get(
+                            "prices",
+                            []
+                        ):
+                            for component in tariff.get(
+                                "priceComponents",
+                                []
+                            ):
+            
+                                if component.get("code") == "ENERGY":
+            
+                                    value = component.get("value")
+            
+                                    if value is not None:
+                                        energy_prices.append(
+                                            float(value)
+                                        )
+            
+                if not energy_prices:
+                    continue
+            
+                price = min(
+                    energy_prices
+                )
         
             filtered.append({
                 "charger": charger,
