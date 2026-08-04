@@ -321,10 +321,9 @@ class TopChargerSensor(AnwbBaseSensor):
 
         info = extract_charger_info(charger)
 
-        # use .get everywhere to avoid KeyError
-        price_info = charger.get("price", {})
-        address = charger.get("address", {}) or {}
-        coords = charger.get("coordinates", {}) or {}
+        price_info = charger.get("price") or {}
+        address = charger.get("address") or {}
+        coords = charger.get("coordinates") or {}
 
         attributes = {
             "rank": self.rank,
