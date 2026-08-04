@@ -168,15 +168,24 @@ class RouteCoordinator(
             CONF_MAX_DETOUR_KM,
             DEFAULT_MAX_DETOUR_KM
         )
-        charger_type = self._get_config_value(
-            CONF_CHARGER_TYPE,
-            DEFAULT_CHARGER_TYPE
+        charger_type_entity = self.hass.states.get(
+            "input_select.anwb_lader_filter"
         )
 
+        if charger_type_entity:
+            charger_type = charger_type_entity.state
+        else:
+            charger_type = DEFAULT_CHARGER_TYPE
+        
+                _LOGGER.warning(
+                    "Geselecteerd ladertype: %s",
+                    charger_type,
+        )
         _LOGGER.warning(
-            "Geselecteerd ladertype: %s",
+            "Actief laadfilter: %s",
             charger_type,
-)
+        )
+
         
         destination_entity = self.hass.states.get(
             "input_text.anwb_route_destination"
