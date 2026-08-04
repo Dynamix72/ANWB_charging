@@ -472,7 +472,16 @@ class RouteCoordinator(
       
         # top 10
         filtered = filtered[:10]
-
+        
+        _LOGGER.warning("=== GESORTEERDE TOPLIJST ===")
+        
+        for idx, item in enumerate(filtered[:20], start=1):
+            _LOGGER.warning(
+                "%s | %s | %.4f",
+                idx,
+                item["charger"].get("title"),
+                item["price"],
+            )
         _LOGGER.info(
             "Route laadpalen over=%s",
             len(filtered),
