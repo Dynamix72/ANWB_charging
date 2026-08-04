@@ -251,16 +251,15 @@ class ChargerCountSensor(AnwbBaseSensor):
             unique_id="anwb_charger_count",
         )
         self._attr_icon = "mdi:ev-station"
-    
+
     @property
-    def native_value(self) -> Optional[int]:
-        data = self.coordinator.data or {}
-    
-        chargers = data.getchargers",
-            []
-        )
-    
-        return len(chargers) 
+    def native_value(self) -> Optionaldata = self.coordinator.data
+
+        if not data:
+            return 0
+
+        chargers = data.get("chargers", [])
+        return len(chargers)
             
 class TopChargerSensor(AnwbBaseSensor):
     """Sensor for the Nth top charger."""
