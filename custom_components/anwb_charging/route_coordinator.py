@@ -1,25 +1,3 @@
-"""
-RouteCoordinator voor ANWB Charging Integration.
-
-Dit coordinator verwerkt routes naar een bestemming en zoekt de goedkoopste laadpalen
-onderweg rekening houdend met omrijafstand.
-
-Workflow:
-1. Haalt configuratie op (bestemming, max omrijafstand, ladertype)
-2. PROBEERT route via OpenRouteService (ORS) te berekenen
-3. Bij fout of geen bestemming: FALLBACK naar simpele laadpaalzoeken op huidige locatie
-4. Haalt beschikbare laadpalen op via ANWB API
-5. Filtert laadpalen op basis van route (indien beschikbaar) of gewoon beschikbaarheid
-8. Retourneert gefilterde en gesorteerde resultaten
-
-Updates: Geen automatische updates - alleen op knopdruk via UI
-
-FALLBACK SCENARIO:
-- Geen bestemming ingevuld → Zoekt laadpalen bij huidige locatie
-- Route API error (quota, timeout) → Zoekt laadpalen bij huidige locatie
-- Geen laadpalen op route → Toont laadpalen in buurt
-"""
-
 from datetime import timedelta
 import logging
 
@@ -455,9 +433,7 @@ class RouteCoordinator(
                 if not energy_prices:
                     continue
             
-                price = min(
-                    energy_prices
-                )
+                price = energy_prices[0]
         
             filtered.append({
                 "charger": charger,
@@ -609,9 +585,7 @@ class RouteCoordinator(
                 if not energy_prices:
                     continue
             
-                price = min(
-                    energy_prices
-                )
+                price = energy_prices[0]
 
             filtered.append({
                 "charger": charger,
