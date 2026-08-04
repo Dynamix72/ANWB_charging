@@ -470,12 +470,6 @@ class RouteCoordinator(
             key=lambda c: c["price"]
         )
       
-        _LOGGER.warning(
-            "Laadpaal=%s vermogen=%s kW filter=%s",
-            charger.get("title"),
-            max_power,
-            charger_type,
-        ) 
         # top 10
         filtered = filtered[:10]
 
