@@ -240,7 +240,6 @@ class CheapestChargerSensor(AnwbBaseSensor):
 
         return chargers[0].get("title")
 
-
 class ChargerCountSensor(AnwbBaseSensor):
     """Sensor that returns the number of (filtered) chargers."""
 
@@ -255,17 +254,14 @@ class ChargerCountSensor(AnwbBaseSensor):
 
     @property
     def native_value(self) -> Optional[int]:
-    
         data = self.coordinator.data or {}
-    
-        chargers
-            "chargers",
+
+        chargers = data   "chargers",
             []
         )
-    
+
         return len(chargers)
-
-
+        
 class TopChargerSensor(AnwbBaseSensor):
     """Sensor for the Nth top charger."""
 
