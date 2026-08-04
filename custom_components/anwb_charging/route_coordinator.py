@@ -376,17 +376,14 @@ class RouteCoordinator(
                         )
                     )
         
-            # ladertype filter
+             # Filter op ladertype
             if charger_type == "AC laders" and max_power >= 50:
                 continue
-        
-            if charger_type == "Snelladers" and (
-                max_power < 50
-                or max_power >= 150
-            ):
+            elif charger_type == "Snelladers" and (max_power < 50 or max_power >= 100):
                 continue
-        
-            if charger_type == "Ultrasnelladers" and max_power < 150:
+            elif charger_type == "Ultrasnelladers" and max_power < 100:
+                continue
+            if charger_type == "AC laders" and max_power >= 50:
                 continue
         
             price_data = charger.get("price")
@@ -537,9 +534,9 @@ class RouteCoordinator(
             # Filter op ladertype
             if charger_type == "AC laders" and max_power >= 50:
                 continue
-            elif charger_type == "Snelladers" and (max_power < 50 or max_power >= 150):
+            elif charger_type == "Snelladers" and (max_power < 50 or max_power >= 100):
                 continue
-            elif charger_type == "Ultrasnelladers" and max_power < 150:
+            elif charger_type == "Ultrasnelladers" and max_power < 100:
                 continue
 
             # Extract prijs
