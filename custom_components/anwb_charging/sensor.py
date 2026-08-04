@@ -255,14 +255,13 @@ class ChargerCountSensor(AnwbBaseSensor):
     @property
     def native_value(self) -> Optional[int]:
         data = self.coordinator.data or {}
-        
-        chargers = data.getchargers",(
-            "chargers",
+    
+        chargers = data.getchargers",
             []
         )
     
-        return len(chargers)
-        
+        return len(chargers) 
+            
 class TopChargerSensor(AnwbBaseSensor):
     """Sensor for the Nth top charger."""
 
