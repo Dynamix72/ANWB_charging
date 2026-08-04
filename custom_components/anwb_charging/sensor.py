@@ -254,7 +254,9 @@ class ChargerCountSensor(AnwbBaseSensor):
     
     @property
     def native_value(self) -> Optional[int]:
-        data = self.coordinator.data orargers = data.get(
+        data = self.coordinator.data or {}
+        
+        chargers(
             "chargers",
             []
         )
