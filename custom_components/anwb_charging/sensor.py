@@ -312,9 +312,13 @@ class TopChargerSensor(AnwbBaseSensor):
 
     @property
     def extra_state_attributes(self) -> Dict:
-        charger = self._charger()
-        if charger is None:
+    
+        item = self._charger_item()
+    
+        if item is None:
             return {}
+    
+        charger = item.get("charger", {})
 
         status = "AVAILABLE"
         for evse in charger.get("electricVehicleSupplyEquipment", []) or []:
@@ -356,6 +360,8 @@ class TopChargerSensor(AnwbBaseSensor):
             "icon": "mdi:lightning-bolt" if status == "CHARGING" else "mdi:ev-station",
             "latitude": _safe_float(coords.get("latitude"), None),
             "longitude": _safe_float(coords.get("longitude"), None),
+            "detour_km": item.get("detour_km"),
+            "extra_minutes": item.get("extra_minutes"),
         }
 
         # Remove None values to keep attributes compact/serializable
