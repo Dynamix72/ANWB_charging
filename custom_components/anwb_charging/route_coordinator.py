@@ -141,11 +141,6 @@ class RouteCoordinator(
             Dict met route data (of None), gefilterde laadpalen en voertuigpositie
         """
 
-        # Lees huidige instellingen uit configuratie
-        max_detour_km = self._get_config_value(
-            CONF_MAX_DETOUR_KM,
-            DEFAULT_MAX_DETOUR_KM
-        )
         charger_type_entity = self.hass.states.get(
             "input_select.anwb_lader_filter"
         )
@@ -164,8 +159,7 @@ class RouteCoordinator(
             "Actief laadfilter: %s",
             charger_type,
         )
-
-        
+     
         destination_entity = self.hass.states.get(
             "input_text.anwb_route_destination"
         )
@@ -446,6 +440,40 @@ class RouteCoordinator(
         # top 10
         filtered = filtered[:10]
         
+        # Bereken omrijafstand voor top 10
+        for item in filtered:
+        
+            charger = item["charger"]
+        
+            coords = charger.get("coordinates", {})
+        
+            charger_lat = coords.get("latitude")
+            charger_lon = coords.get("longitude")
+        
+            if charger_lat is None or charger_lon is None:
+                item["detour_km"] = 0
+                item["extra_minutes"] = 0
+                continue
+        
+            detour_km = geodesic(
+                (
+                    search_point["latitude"],
+                    search_point["longitude"],
+                ),
+                (
+                    charger_lat,
+                    charger_lon,
+                ),
+            ).km
+        
+            # heen + terug
+            item["detour_km"] = round(detour_km * 2, 1)
+        
+            # gemiddelde snelheid 80 km/u
+            item["extra_minutes"] = round(
+                ((detour_km * 2) / 80) * 60
+            )
+
         _LOGGER.warning("=== GESORTEERDE TOPLIJST ===")
         
         for idx, item in enumerate(filtered[:20], start=1):
