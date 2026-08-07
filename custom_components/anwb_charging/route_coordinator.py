@@ -500,6 +500,11 @@ class RouteCoordinator(
                 "latitude": vehicle_lat,
                 "longitude": vehicle_lon,
             },
+            "route_marker": {
+                "latitude": search_point["latitude"],
+                "longitude": search_point["longitude"],
+                "distance_km": target_km,
+            },
             "destination": destination,
             "charger_type": charger_type,
         }
