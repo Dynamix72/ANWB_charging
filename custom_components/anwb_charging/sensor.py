@@ -296,7 +296,21 @@ class TopChargerSensor(AnwbBaseSensor):
             )
     
         return None
-     
+    
+    def _charger_item(self):
+        chargers = (
+            self.coordinator.data or {}
+        ).get(
+            "chargers",
+            []
+        )
+
+        index = self.rank - 1
+
+        if index < 0 or index >= len(chargers):
+            return None
+
+        return chargers[index] 
 
     @property
     def available(self) -> bool:
