@@ -440,40 +440,69 @@ class RouteCoordinator(
         # top 10
         filtered = filtered[:10]
         
-        # Bereken omrijafstand voor top 10
+        # Bereken echte omrijafstand tov originele route
         for item in filtered:
         
             charger = item["charger"]
         
-            coords = charger.get("coordinates", {})
+            coords = charger.get(
+                "coordinates",
+                {}
+            )
+        
+            _LOGGER.warning(
+                "Coordinates van %s = %s",
+                charger.get("title"),
+                coords,
+            )
         
             charger_lat = coords.get("latitude")
             charger_lon = coords.get("longitude")
         
-            if charger_lat is None or charger_lon is None:
+            if (
+                charger_lat is None
+                or charger_lon is None
+            ):
                 item["detour_km"] = 0
                 item["extra_minutes"] = 0
                 continue
         
-            detour_km = geodesic(
-                (
-                    search_point["latitude"],
-                    search_point["longitude"],
-                ),
-                (
+            try:
+        
+                detour = await self.route_api.calculate_detour(
+                    vehicle_lat,
+                    vehicle_lon,
                     charger_lat,
                     charger_lon,
-                ),
-            ).km
+                    destination,
+                )
         
-            # heen + terug
-            item["detour_km"] = round(detour_km * 2, 1)
+                item["detour_km"] = detour[
+                    "detour_km"
+                ]
         
-            # gemiddelde snelheid 80 km/u
-            item["extra_minutes"] = round(
-                ((detour_km * 2) / 80) * 60
-            )
-
+                item["extra_minutes"] = detour[
+                    "extra_minutes"
+                ]
+        
+                _LOGGER.warning(
+                    "%s -> %+0.1f km / %+0.1f min",
+                    charger.get("title"),
+                    item["detour_km"],
+                    item["extra_minutes"],
+                )
+        
+            except Exception as err:
+        
+                _LOGGER.warning(
+                    "Omrijberekening mislukt voor %s: %s",
+                    charger.get("title"),
+                    err,
+                )
+        
+                item["detour_km"] = 0
+                item["extra_minutes"] = 0
+        
         _LOGGER.warning("=== GESORTEERDE TOPLIJST ===")
         
         for idx, item in enumerate(filtered[:20], start=1):
