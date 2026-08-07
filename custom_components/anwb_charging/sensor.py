@@ -186,8 +186,11 @@ async def async_setup_entry(hass, entry, async_add_entities):
     entities: List[SensorEntity] = [
         CheapestChargerSensor(route_coordinator, entry.entry_id),
         ChargerCountSensor(route_coordinator, entry.entry_id),
-    
         RouteGeoJsonSensor(
+            route_coordinator,
+            entry.entry_id,
+        ),
+        RouteDistanceMarkerSensor(
             route_coordinator,
             entry.entry_id,
         ),
@@ -423,7 +426,50 @@ class RouteDistanceSensor(SensorEntity):
             "route_points": len(route.get("coordinates", [])),
             "coordinates": route.get("coordinates", []),
         }
+class RouteDistanceMarkerSensor(
+    CoordinatorEntity,
+    SensorEntity,
+):
 
+    def __init__(self, coordinator, entry_id):
+        super().__init__(coordinator)
+
+        self._attr_name = "ANWB Route Marker"
+        self._attr_unique_id = (
+            f"anwb_route_marker_{entry_id}"
+        )
+
+    @property
+    def native_value(self):
+        marker = (
+            self.coordinator.data or {}
+        ).get(
+            "route_marker",
+            {}
+        )
+
+        return marker.get(
+            "distance_km"
+        )
+
+    @property
+    def extra_state_attributes(self):
+
+        marker = (
+            self.coordinator.data or {}
+        ).get(
+            "route_marker",
+            {}
+        )
+
+        return {
+            "latitude": marker.get(
+                "latitude"
+            ),
+            "longitude": marker.get(
+                "longitude"
+            ),
+        }
 
 class RouteGeoJsonSensor(CoordinatorEntity, SensorEntity):
     def __init__(self, coordinator, entry_id: Optional[str]):
