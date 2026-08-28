@@ -19,9 +19,11 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.exceptions import HomeAssistantError
 
 _LOGGER = logging.getLogger(__name__)
-
-GEOCODE_URL = "https://api.openrouteservice.org/geocode/search"
+""" Deprecated GEOCODE_URL = "https://api.openrouteservice.org/geocode/search"
 DIRECTIONS_URL = "https://api.openrouteservice.org/v2/directions/driving-car/geojson"
+"""
+GEOCODE_URL = "https://api.heigit.org/pelias/v1"
+DIRECTIONS_URL = "https://api.heigit.org/openrouteservice/v2/directions"
 
 
 class RouteApiError(HomeAssistantError):
