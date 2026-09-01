@@ -298,16 +298,23 @@ class RouteCoordinator(
                 target_km,
             )
 
-        # STAP 2: Haal laadpalen op van ANWB
-        # Gebruik target_km als straal als deze kleiner is dan default radius
-        search_radius = min(target_km, self.radius) if target_km else self.radius
+        # STAP 2: bepaal zoekradius
         
-        anwb_data = await (
-            self.route_api.get_chargers(
-                search_point["latitude"],
-                search_point["longitude"],
-                search_radius,
+        if destination:
+            # Bij route-gebaseerd zoeken altijd de standaard radius
+            search_radius = self.radius
+        else:
+            # Zonder bestemming zoeken rond huidige locatie
+            search_radius = (
+                min(target_km, self.radius)
+                if target_km
+                else self.radius
             )
+        
+        anwb_data = await self.route_api.get_chargers(
+            search_point["latitude"],
+            search_point["longitude"],
+            search_radius,
         )
 
         chargers = anwb_data.get(
