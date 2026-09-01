@@ -14,8 +14,7 @@ from typing import Any, Dict, List, Optional
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
-from .coordinator import AnwbCoordinator
-from .route_coordinator import RouteCoordinator
+from .coordinator import RouteCoordinator
 from .const import (
     CONF_ORS_API_KEY,
     DEFAULT_MIN_POWER_KW,
@@ -158,16 +157,6 @@ def extract_charger_info(charger: Dict) -> Dict:
 async def async_setup_entry(hass, entry, async_add_entities):
     """Set up ANWB sensors from a config entry."""
     # Coordinator should be responsible for API key and refresh logic.
-    coordinator = AnwbCoordinator(
-        hass,
-        entry.data.get("device_tracker"),
-        entry.options.get("radius")
-        or entry.data.get("radius")
-        or 10,
-    )
-
-    await coordinator.async_config_entry_first_refresh()
- 
     route_coordinator = RouteCoordinator(
         hass,
         entry,
@@ -264,7 +253,7 @@ class ChargerCountSensor(AnwbBaseSensor):
 
         chargers = data.get("chargers", [])
         return len(chargers)
-            
+             
 class TopChargerSensor(AnwbBaseSensor):
     """Sensor for the Nth top charger."""
 
@@ -379,6 +368,8 @@ class TopChargerSensor(AnwbBaseSensor):
             "longitude": _safe_float(coords.get("longitude"), None),
             "detour_km": item.get("detour_km"),
             "extra_minutes": item.get("extra_minutes"),
+            "distance_km": item.get("distance_km"),
+            "duration_minutes": item.get("duration_minutes"),
         }
 
         # Remove None values to keep attributes compact/serializable
@@ -482,7 +473,7 @@ class RouteGeoJsonSensor(CoordinatorEntity, SensorEntity):
     def native_value(self):
         route = (self.coordinator.data or {}).get("route") or {}
     
-        if not route.get("geojson"):
+        if not route or not route.get("geojson"):
             return "geen_route"
     
         return "route"
@@ -507,4 +498,3 @@ class RouteGeoJsonSensor(CoordinatorEntity, SensorEntity):
             "latitude": latitude,
             "longitude": longitude,
         }
-
