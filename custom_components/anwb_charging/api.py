@@ -146,19 +146,37 @@ class RouteApi:
         return data
 
     async def geocode(self, destination: str) -> Dict[str, float]:
-        """Geocode a destination string to latitude/longitude.
+        """Geocode a destination string to latitude/longitude."""
+    
+        # Bestemming is al een coordinatenpaar
+        if "," in destination:
+            try:
+                lat, lon = destination.split(",")
+    
+                return {
+                    "latitude": float(lat.strip()),
+                    "longitude": float(lon.strip()),
+                }
+    
+            except ValueError:
+                pass
+    
+        params = {
+            "text": destination,
+            "size": 1,
+        }
+    
+        _LOGGER.debug(
+            "Geocoding destination (masked) with ORS"
+        )
+    
+        data = await self._request_json(
+            "GET",
+            GEOCODE_URL,
+            params=params,
+            use_auth_header=False,
+        )
 
-        Returns:
-            Dict with keys 'latitude' and 'longitude' as floats.
-
-        Raises:
-            RouteApiError if geocode fails or no results found.
-        """
-        params = {"text": destination, "size": 1}
-        _LOGGER.debug("Geocoding destination (masked) with ORS")
-
-        # Geocode uses api_key in query params, not Authorization header
-        data = await self._request_json("GET", GEOCODE_URL, params=params, use_auth_header=False)
 
         features = data.get("features") or []
         if not features:
