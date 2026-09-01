@@ -474,8 +474,8 @@ class RouteCoordinator(
                 charger_lat is None
                 or charger_lon is None
             ):
-                item["detour_km"] = 0
-                item["extra_minutes"] = 0
+                item["distance_km"] = 0
+                item["duration_minutes"] = 0
                 continue
         
             try:
@@ -488,19 +488,19 @@ class RouteCoordinator(
                     destination,
                 )
         
-                item["detour_km"] = detour[
+                item["distance_km"] = detour[
                     "detour_km"
                 ]
         
-                item["extra_minutes"] = detour[
+                item["duration_minutes"] = detour[
                     "extra_minutes"
                 ]
         
                 _LOGGER.warning(
                     "%s -> %+0.1f km / %+0.1f min",
                     charger.get("title"),
-                    item["detour_km"],
-                    item["extra_minutes"],
+                    item["distance_km"],
+                    item["duration_minutes"],
                 )
         
             except Exception as err:
@@ -511,8 +511,8 @@ class RouteCoordinator(
                     err,
                 )
         
-                item["detour_km"] = 0
-                item["extra_minutes"] = 0
+                item["distance_km"] = 0
+                item["duration_minutes"] = 0
         
         _LOGGER.warning("=== GESORTEERDE TOPLIJST ===")
         
