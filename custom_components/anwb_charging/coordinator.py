@@ -79,7 +79,7 @@ class RouteCoordinator(
             hass: Home Assistant instance
             entry: Config entry met instellingen
             tracker_id: Entity ID van device tracker (voor GPS locatie)
-            radius: Search radius in km rond huidige locatie (vast 10 km)
+            radius: Search radius in km rond huidge locatie (vast 10 km)
             min_power_kw: Minimaal vermogen laadpaal in kW
             ors_api_key: OpenRouteService API key voor routeberekening
         """
@@ -131,9 +131,9 @@ class RouteCoordinator(
         de "Update" knop indrukt in de UI.
         
         FALLBACK: Als geen bestemming of route error:
-        - Zoekt laadpalen bij huidige locatie
+        - Zoekt laadpalen bij huidge locatie
         - Sorteert alleen op prijs
-        - Geen omrijberekening
+        - Berekent afstand en tijd naar elk station
         
         Returns:
             Dict met route data (of None), gefilterde laadpalen en voertuigpositie
@@ -162,6 +162,7 @@ class RouteCoordinator(
             "input_text.anwb_route_destination"
         )
         
+        target_km = None
         if destination_entity:
             destination = (destination_entity.state or "").strip()
             distance_entity = self.hass.states.get(
@@ -175,7 +176,7 @@ class RouteCoordinator(
         else:
             destination = ""
 
-        # Haal huidige voertuigpositie op via device tracker
+        # Haal huidge voertuigpositie op via device tracker
         tracker = self.hass.states.get(
             self.tracker_id
         )
@@ -224,6 +225,7 @@ class RouteCoordinator(
                 vehicle_lat,
                 vehicle_lon,
                 charger_type,
+                target_km,  # Pas eventuele afstand toe ook zonder route
             )
 
         # STAP 1: Bereken route via OpenRouteService
@@ -293,14 +295,18 @@ class RouteCoordinator(
                 vehicle_lat,
                 vehicle_lon,
                 charger_type,
+                target_km,
             )
 
         # STAP 2: Haal laadpalen op van ANWB
+        # Gebruik target_km als straal als deze kleiner is dan default radius
+        search_radius = min(target_km, self.radius) if target_km else self.radius
+        
         anwb_data = await (
             self.route_api.get_chargers(
                 search_point["latitude"],
                 search_point["longitude"],
-                self.radius,
+                search_radius,
             )
         )
 
@@ -541,31 +547,49 @@ class RouteCoordinator(
         vehicle_lat,
         vehicle_lon,
         charger_type,
+        target_km=None,
     ):
-        """FALLBACK: Zoek laadpalen bij huidige locatie zonder routeberekening.
+        """FALLBACK: Zoek laadpalen bij huidge locatie zonder routeberekening.
         
         Dit wordt gebruikt als:
         - Geen bestemming ingevuld
         - Route API error (quota overschreden, timeout, etc)
-        - Geen laadpalen op route gevonden
+        
+        Als target_km opgegeven en kleiner dan self.radius, wordt target_km als zoekstraal gebruikt.
         
         Args:
-            vehicle_lat: Huidige breedtegraad
-            vehicle_lon: Huidige lengtegraad
+            vehicle_lat: Huidge breedtegraad
+            vehicle_lon: Huidge lengtegraad
             charger_type: Ladertype filter
+            target_km: Optionele afstand om te gebruiken als zoekstraal (als < self.radius)
             
         Returns:
-            Dict met laadpalen gesorteerd op prijs
+            Dict met laadpalen gesorteerd op prijs + afstand/tijd naar stations
         """
         _LOGGER.info(
-            "FALLBACK: Laadpalen zoeken op huidige locatie (geen route)"
+            "FALLBACK: Laadpalen zoeken op huidge locatie (geen route)"
         )
+
+        # Bepaal zoekstraal: als target_km kleiner is dan default radius, gebruik target_km
+        if target_km and target_km < self.radius:
+            search_radius = target_km
+            _LOGGER.info(
+                "FALLBACK: Gebruik opgegeven afstand %.1f km als zoekstraal (kleiner dan default %.1f km)",
+                target_km,
+                self.radius,
+            )
+        else:
+            search_radius = self.radius
+            _LOGGER.info(
+                "FALLBACK: Gebruik default zoekstraal %.1f km",
+                self.radius,
+            )
 
         # Haal laadpalen op van ANWB
         anwb_data = await self.route_api.get_chargers(
             vehicle_lat,
             vehicle_lon,
-            self.radius,
+            search_radius,
         )
 
         chargers = anwb_data.get("value", [])
@@ -648,26 +672,73 @@ class RouteCoordinator(
                 "charger": charger,
                 "price": price,
                 "power": max_power,
-                "detour_km": 0,  # Geen omrijden nodig - we zijn op deze locatie
-                "extra_minutes": 0,
+                "distance_km": 0,
+                "duration_minutes": 0,
             })
 
-        # Sorteer alleen op prijs (geen route beschikbaar)
+        # Sorteer op prijs
         filtered.sort(key=lambda c: c["price"])
 
+        # Top 10
+        filtered = filtered[:10]
+
         _LOGGER.info(
-            "FALLBACK: %d laadpalen beschikbaar na filter",
+            "FALLBACK: %d laadpalen na price filter (top 10)",
+            len(filtered),
+        )
+
+        # Bereken afstand en tijd naar elk laadstation
+        for item in filtered:
+            charger = item["charger"]
+            coords = charger.get("coordinates", {})
+            
+            charger_lat = coords.get("latitude")
+            charger_lon = coords.get("longitude")
+            
+            if charger_lat is None or charger_lon is None:
+                item["distance_km"] = 0
+                item["duration_minutes"] = 0
+                continue
+            
+            try:
+                # Bereken route van huidge locatie naar laadstation
+                route_to_charger = await self.route_api.get_route(
+                    vehicle_lat,
+                    vehicle_lon,
+                    f"{charger_lat},{charger_lon}",
+                )
+                
+                item["distance_km"] = round(route_to_charger["distance_km"], 1)
+                item["duration_minutes"] = round(route_to_charger["duration_min"], 0)
+                
+                _LOGGER.warning(
+                    "FALLBACK: %s -> %.1f km / %.0f min",
+                    charger.get("title"),
+                    item["distance_km"],
+                    item["duration_minutes"],
+                )
+                
+            except Exception as err:
+                _LOGGER.warning(
+                    "FALLBACK: Route berekening naar %s mislukt: %s",
+                    charger.get("title"),
+                    err,
+                )
+                item["distance_km"] = 0
+                item["duration_minutes"] = 0
+
+        _LOGGER.info(
+            "FALLBACK: %d laadpalen beschikbaar met afstand/tijd berekend",
             len(filtered),
         )
 
         return {
-            "route": {},  # Geen route berekend
+            "route": None,  # Geen route berekend
             "chargers": filtered,
             "vehicle": {
                 "latitude": vehicle_lat,
                 "longitude": vehicle_lon,
             },
             "destination": None,
-            "max_detour_km": 0,
             "charger_type": charger_type,
         }
