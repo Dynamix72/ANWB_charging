@@ -23,12 +23,11 @@ from homeassistant.exceptions import HomeAssistantError
 _LOGGER = logging.getLogger(__name__)
 
 # OpenRouteService URLs
-GEOCODE_URL = "https://api.heigit.org/pelias/v1"
-DIRECTIONS_URL = "https://api.heigit.org/openrouteservice/v2/directions"
+GEOCODE_URL = "https://api.heigit.org/heigit/pelias/v1/search"
+DIRECTIONS_URL = "https://api.heigit.org/heigit/openrouteservice/v2/directions"
 
 # ANWB API
 ANWB_BASE = "https://api.anwb.nl/routing/points-of-interest/v3/all"
-
 
 class RouteApiError(HomeAssistantError):
     """Exception raised for ORS API errors."""
