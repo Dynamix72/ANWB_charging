@@ -22,7 +22,7 @@ from homeassistant.exceptions import HomeAssistantError
 
 _LOGGER = logging.getLogger(__name__)
 
-# OpenRouteService URLs
+# OpenRouteService URLs (using new api.heigit.org endpoint)
 GEOCODE_URL = "https://api.heigit.org/heigit/pelias/v1/search"
 DIRECTIONS_URL = "https://api.heigit.org/heigit/openrouteservice/v2/directions"
 
@@ -52,17 +52,45 @@ class RouteApi:
         self._session = async_get_clientsession(hass)
 
     async def _request_json(
-        self, method: str, url: str, *, params: Optional[Dict] = None, json: Optional[Dict] = None, headers: Optional[Dict] = None, retries: int = 2
+        self, 
+        method: str, 
+        url: str, 
+        *, 
+        params: Optional[Dict] = None, 
+        json: Optional[Dict] = None, 
+        headers: Optional[Dict] = None, 
+        retries: int = 2,
+        use_auth_header: bool = False,
     ) -> Dict[str, Any]:
         """Perform an HTTP request and return parsed JSON with retries for 429.
+
+        Args:
+            method: HTTP method (GET, POST, etc)
+            url: URL to request
+            params: Query parameters
+            json: JSON body for POST
+            headers: Additional headers
+            retries: Number of retries for 429 errors
+            use_auth_header: If True, add Authorization header. If False, API key goes in params.
 
         Raises:
             RouteApiError on network errors, non-200 responses, or JSON errors.
         """
-        # Ensure headers include Authorization header for ORS
+        # Prepare headers
         req_headers = dict(headers or {})
-        if "Authorization" not in req_headers:
+        
+        # Add Authorization header if requested (for directions endpoint)
+        if use_auth_header:
             req_headers["Authorization"] = self.api_key
+        
+        # Add API key to params if not using auth header (for geocode endpoint)
+        if params is None:
+            params = {}
+        else:
+            params = dict(params)  # Make a copy to avoid modifying original
+        
+        if not use_auth_header and "api_key" not in params:
+            params["api_key"] = self.api_key
 
         attempt = 0
         backoff = 1.0
@@ -129,7 +157,8 @@ class RouteApi:
         params = {"text": destination, "size": 1}
         _LOGGER.debug("Geocoding destination (masked) with ORS")
 
-        data = await self._request_json("GET", GEOCODE_URL, params=params)
+        # Geocode uses api_key in query params, not Authorization header
+        data = await self._request_json("GET", GEOCODE_URL, params=params, use_auth_header=False)
 
         features = data.get("features") or []
         if not features:
@@ -163,7 +192,8 @@ class RouteApi:
 
         _LOGGER.debug("Requesting ORS directions (masked)")
 
-        data = await self._request_json("POST", DIRECTIONS_URL, json=payload)
+        # Directions uses Authorization header
+        data = await self._request_json("POST", DIRECTIONS_URL, json=payload, use_auth_header=True)
 
         features = data.get("features") or []
         if not features:
@@ -209,11 +239,6 @@ class RouteApi:
         # Use ORS route summaries for both paths to compute detour precisely using meters/seconds
         direct_route = await self.get_route(start_lat, start_lon, destination)
 
-        # Build route via charger
-        payload = {
-            "coordinates": [[start_lon, start_lat], [charger_lon, charger_lat], [direct_route["longitude"] if False else direct_route["destination"],],],  # placeholder; see note below
-        }
-
         # Instead of re-geocoding, compute coordinates directly:
         # ORS geocode result used earlier in get_route, so call geocode again here:
         dest_coords = await self.geocode(destination)
@@ -223,7 +248,8 @@ class RouteApi:
         }
 
         _LOGGER.debug("Requesting ORS directions for route via charger (masked)")
-        route_via = await self._request_json("POST", DIRECTIONS_URL, json=payload)
+        # Directions uses Authorization header
+        route_via = await self._request_json("POST", DIRECTIONS_URL, json=payload, use_auth_header=True)
 
         features = route_via.get("features") or []
         if not features:
