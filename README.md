@@ -1,255 +1,69 @@
-# ANWB Charging Integration
+# ANWB Charging & Fuel
 
-Home Assistant integratie voor ANWB Laadpalen - vind de goedkoopste laadpalen op je route!
+Dit project verzamelt en beheert informatie over ANWB-laadpunten (EV charging) en tankstations (fuel). Het doel is data over locaties, beschikbaarheid, tarieven en integraties te centraliseren zodat mobiele en web-apps er makkelijk op kunnen bouwen.
 
-## Beschrijving
+Let op: de aanbevolen nieuwe repositorynaam is: `ANWB-charging-and-fuel`.
 
-Deze integratie helpt je om de goedkoopste beschikbare laadpalen te vinden rekening houdend met:
-- **Prijs** - Goedkoopste laadpalen eerst
-- **Locatie** - Laadpalen in je buurt (10 km radius vast ingesteld)
-- **Route** - Laadpalen op of vlak bij je route naar een bestemming
-- **Omrijafstand** - Maximale extra kilometers die je wilt rijden (instelbaar)
-- **Ladertype** - Filtert op AC laders, Snelladers, Ultrasnelladers of alle typen
+Features
+- Locaties en metadata van laadpunten (type connector, vermogen, operator)
+- Locaties en metadata van tankstations (brandstoftype, services, openingstijden)
+- API / scripts om data te importeren, te normaliseren en te publiceren
+- Integratievoorbeelden en CLI-tools voor analyse
 
-## Installatie
+Installatie
+1. Clone de repository (na hernoemen: vervang NEW_NAME door de nieuwe repo-naam):
 
-### Via HACS (aanbevolen)
-1. Open HACS in Home Assistant
-2. Ga naar "Integrations"
-3. Klik op "Explore & Download Repositories"
-4. Zoek naar "ANWB Charging"
-5. Klik "Download"
-6. Herstart Home Assistant
-
-### Handmatig
-1. Clone of download deze repository
-2. Kopieer `custom_components/anwb_charging` naar je Home Assistant `custom_components` directory
-3. Herstart Home Assistant
-
-## Configuratie
-
-### Stap 1: Voeg de integratie toe
-1. Ga naar Settings → Devices & Services → Integrations
-2. Klik op "Create Integration"
-3. Zoek naar "ANWB Charging"
-4. Klik op de integratie
-
-### Stap 2: Configureer de instellingen
-
-Bij eerste setup moet je invullen:
-
-#### **Device Tracker (Verplicht)**
-Dit is je GPS bron. Je kunt kiezen uit:
-- Telefoon GPS (b.v. `device_tracker.mijn_telefoon`)
-- Auto GPS
-- Ander apparaat met GPS
-
-> ℹ️ Voorkeur: Kies een stabiele GPS bron, niet de iPhone default (te veel ruis)
-
-#### **Bestemming (Verplicht)**
-Waar wil je heen? Bijv:
-- `Amsterdam`
-- `Schiphol Airport`
-- `Maastricht`
-- Volledig adres: `Kalverstraat 12, Amsterdam`
-
-#### **Maximale Omrijafstand (Verplicht)**
-Hoeveel extra kilometers wil je rijden voor een goedkopere laadpaal?
-- Min: 1 km
-- Max: 100 km
-- Default: 10 km
-
-Voorbeeld: 
-- Route is 100 km
-- Directe kosten: €8
-- Laadpaal met 5 km omrijden kost: €6
-- Laadpaal met 15 km omrijden kost: €4
-
-Bij max omrijden van 10 km, zie je alleen de eerste twee opties.
-
-#### **Ladertype (Verplicht)**
-Welk type laadpaal wil je gebruiken?
-
-| Type | Vermogen | Laadtijd |
-|------|----------|----------|
-| **AC laders** | < 50 kW | 1-2 uur |
-| **Snelladers** | 50-150 kW | 20-45 min |
-| **Ultrasnelladers** | ≥ 150 kW | 10-20 min |
-| **Alle laders** | Alles | Alles |
-
-#### **OpenRouteService API Key (Optioneel)**
-Voor betere routeberekening. Gratis account met 2500 requests/maand:
-1. Ga naar https://openrouteservice.org
-2. Maak gratis account aan
-3. Genereer API key
-4. Voer key in (optioneel - werkt ook zonder)
-
-### Stap 3: Wissel instellingen
-
-Na setup kun je de instellingen wijzigen:
-1. Ga naar Settings → Devices & Services → Integrations
-2. Zoek "ANWB Charging"
-3. Klik op de integratie
-4. Klik op "Opties" (of het tandwiel icoon)
-5. Wijzig één of meer instellingen:
-   - Bestemming
-   - Maximale omrijafstand
-   - Ladertype
-   - API Key
-
-## Gebruik
-
-### Handmatig API aanroepen (Knopdruk)
-
-De integratie roept de APIs ALLEEN aan als jij dit aangeeft. Dit voorkomt oneindige API calls.
-
-#### Via Service Call (Automations/Scripts)
-```yaml
-service: homeassistant.update_entity
-data:
-  entity_id:
-    - sensor.anwb_cheapest_charger
-    - sensor.anwb_charger_count
-    - sensor.anwb_top_1
-    - sensor.anwb_top_2
-    - sensor.anwb_top_3
-    - sensor.anwb_top_4
-    - sensor.anwb_top_5
+```bash
+# huidige naam
+git clone https://github.com/Dynamix72/ANWB_charging.git
+# na hernoemen
+# git clone https://github.com/Dynamix72/ANWB-charging-and-fuel.git
 ```
 
-#### Via Developer Tools
-1. Ga naar Developer Tools → Services
-2. Service: `homeassistant.update_entity`
-3. Voer entity ID in (bijv `sensor.anwb_cheapest_charger`)
-4. Klik "Call Service"
+2. Maak een virtuele omgeving en installeer dependencies:
 
-### Beschikbare Sensors
-
-Na setup krijg je deze sensors:
-
-| Sensor | Beschrijving | Voorbeeld |
-|--------|-------------|----------|
-| `sensor.anwb_cheapest_charger` | Goedkoopste laadpaal title | "Albert Cuyp, Amsterdam" |
-| `sensor.anwb_charger_count` | Totaal beschikbare laadpalen | 12 |
-| `sensor.anwb_top_1` | #1 goedkoopste | "Station Zuid, Amsterdam" |
-| `sensor.anwb_top_2` | #2 goedkoopste | "Zuidas, Amsterdam" |
-| ... | ... | ... |
-| `sensor.anwb_top_10` | #10 goedkoopste | "De Pijp, Amsterdam" |
-
-### Sensor Attributen
-
-Elke sensor bevat informatie in attributen:
-
-```yaml
-sensor.anwb_top_1:
-  state: "Albert Cuyp, Amsterdam"
-  attributes:
-    price_per_kwh: 0.35
-    max_power_kw: 150
-    charge_points_available: 2
-    charge_points_total: 4
-    street: "Albert Cuyp"
-    postal_code: "1072 SL"
-    city: "Amsterdam"
-    latitude: 52.3596
-    longitude: 4.8950
-    status: "AVAILABLE"
-    detour_km: 2.3        # Omrijafstand
-    extra_minutes: 8      # Extra tijd
+```bash
+python -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
+pip install -r requirements.txt
 ```
 
-## Geavanceerd Gebruik
+Gebruik
+- Voorbeeldscripts:
 
-### Automation Voorbeeld: Notificatie bij Goedkope Laadpaal
-
-```yaml
-automation:
-  - alias: "Goedkope laadpaal gevonden"
-    trigger:
-      - platform: numeric_state
-        entity_id: sensor.anwb_cheapest_charger_price_per_kwh
-        below: 0.30
-    action:
-      - service: notify.notify
-        data:
-          title: "Laadpaal alert!"
-          message: "Goedkope laadpaal gevonden: {{ state_attr('sensor.anwb_top_1', 'price_per_kwh') }} €/kWh"
+```bash
+python scripts/import_charging.py --source data/charging.csv
+python scripts/import_fuel.py --source data/fuel.csv
 ```
 
-### Script Voorbeeld: Update en Notificeer
+- Plaats API-keys en configuratie in een `.env`-bestand (zorg dat `.env` in `.gitignore` staat).
 
-```yaml
-script:
-  check_laadpalen:
-    sequence:
-      # Update alle sensors
-      - service: homeassistant.update_entity
-        data:
-          entity_id:
-            - sensor.anwb_cheapest_charger
-            - sensor.anwb_charger_count
-      
-      # Wacht op update
-      - delay: "00:00:05"
-      
-      # Stuur notificatie
-      - service: notify.notify
-        data:
-          title: "Laadpalen info"
-          message: |
-            Aantal beschikbaar: {{ states('sensor.anwb_charger_count') }}
-            Goedkoopste: {{ states('sensor.anwb_cheapest_charger') }}
-            Prijs: {{ state_attr('sensor.anwb_top_1', 'price_per_kwh') }} €/kWh
+Projectstructuur (voorstel)
+- scripts/        — import & verwerkingsscripts
+- data/           — voorbeelddata en formats
+- docs/           — documentatie en specificaties
+- src/            — broncode / API
+
+Contributie
+- Issues en pull requests zijn welkom. Beschrijf duidelijk wat je toevoegt en voeg tests toe waar mogelijk.
+- Als je specifieke richtlijnen wilt, kan ik een CONTRIBUTING.md toevoegen.
+
+Licentie
+- Voeg hier de gewenste licentie toe (bijv. MIT). Wil je dat ik een LICENSE-bestand aanmaak, en welke licentie wil je gebruiken?
+
+Repository hernoemen
+- Ik kan de README bijwerken, maar ik kan de repository niet direct hernoemen vanuit deze interface. Hieronder staan twee manieren om te hernoemen:
+
+1) Via GitHub UI (aanbevolen):
+   Repository -> Settings -> Repository name -> vul `ANWB-charging-and-fuel` in -> Rename
+
+2) Via de GitHub REST API (vereist een Personal Access Token met repo-permissies):
+
+```bash
+curl -X PATCH -H "Authorization: token YOUR_TOKEN" \
+  -d '{"name":"ANWB-charging-and-fuel"}' \
+  https://api.github.com/repos/Dynamix72/ANWB_charging
 ```
 
-## Troubleshooting
-
-### "Tracker niet gevonden"
-- Zorg dat je device tracker ID klopt
-- Controleer of je telefoon/apparaat online is
-- Check in Developer Tools → States of de tracker aanwezig is
-
-### "Geen bestemming ingevuld"
-- Voer een bestemming in via Opties
-- Controleer spelling (bijv "Amsterdam" niet "amstardam")
-
-### "Geen laadpalen gevonden"
-- Controleer of laadpalen in de buurt beschikbaar zijn
-- Verlaag de "Maximale omrijafstand"
-- Wijzig het "Ladertype"
-
-### API Rate Limit (429 error)
-- Zorg dat je niet te veel updates aanroept
-- Gebruik een script met delays tussen aanroepen
-- Voeg OpenRouteService API key toe voor betere routing
-
-## Versiegeschiedenis
-
-### v1.1.0 (Huidige)
-- ✨ Route-aware laadpaalfiltering
-- ✨ Bestemming instelbaar via UI
-- ✨ Maximale omrijafstand instelbaar (1-100 km)
-- ✨ Ladertype selecteerbaar (AC/Snellader/Ultrasnellader/Alle)
-- ✨ Alleen handmatige API calls via knopdruk
-- 📝 Uitgebreide code comments
-
-### v1.0.23
-- Initiële release
-- Basislaadpaal zoeken op locatie
-
-## Licentie
-
-MIT License
-
-## Ondersteuning
-
-Vragen of problemen?
-1. Check de [GitHub Issues](https://github.com/Dynamix72/ANWB_charging/issues)
-2. Maak een nieuwe Issue aan met details
-3. Include logs uit Home Assistant
-
-## Credits
-
-- ANWB API voor laadpalen data
-- OpenRouteService voor routeberekening
-- Home Assistant community
+Contact
+- Voor vragen of samenwerking: https://github.com/Dynamix72
