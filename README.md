@@ -1,24 +1,24 @@
 # ANWB Charging & Fuel
 
-Dit project verzamelt en beheert informatie over ANWB-laadpunten (EV charging) en tankstations (fuel). Het doel is data over locaties, beschikbaarheid, tarieven en integraties te centraliseren zodat mobiele en web-apps er makkelijk op kunnen bouwen.
+This project collects and manages information about ANWB charging locations (EV charging) and fuel stations. The goal is to centralize data about locations, availability, pricing, and integrations.
 
 Features
-- Locaties en metadata van laadpunten (type connector, vermogen, operator)
-- Locaties en metadata van tankstations (brandstoftype, services, openingstijden)
-- API / scripts om data te importeren, te normaliseren en te publiceren
-- Integratievoorbeelden en CLI-tools voor analyse
+- Locations and metadata for charging stations (connector types, power, operator)
+- Locations and metadata for fuel stations (fuel types, services, opening hours)
+- Scripts and APIs to import, normalize, and publish data
+- Integration examples and CLI tools for analysis
 
-Installatie
-1. Clone de repository (na hernoemen: vervang NEW_NAME door de nieuwe repo-naam):
+Installation
+1. Clone the repository (after rename: replace NEW_NAME with the new repository name):
 
 ```bash
-# huidige naam
+# current name
 git clone https://github.com/Dynamix72/ANWB_charging.git
-# na hernoemen
+# after rename
 # git clone https://github.com/Dynamix72/ANWB-charging-and-fuel.git
 ```
 
-2. Maak een virtuele omgeving en installeer dependencies:
+2. Create a virtual environment and install dependencies:
 
 ```bash
 python -m venv venv
@@ -26,36 +26,36 @@ source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-Gebruik
-- Voorbeeldscripts:
+Usage
+- Example scripts:
 
 ```bash
 python scripts/import_charging.py --source data/charging.csv
 python scripts/import_fuel.py --source data/fuel.csv
 ```
 
-- Plaats API-keys en configuratie in een `.env`-bestand (zorg dat `.env` in `.gitignore` staat).
+- Place API keys and configuration in a `.env` file (ensure `.env` is listed in `.gitignore`).
 
-Projectstructuur (voorstel)
-- scripts/        — import & verwerkingsscripts
-- data/           — voorbeelddata en formats
-- docs/           — documentatie en specificaties
-- src/            — broncode / API
+Project structure (suggested)
+- scripts/        — import & processing scripts
+- data/           — sample data and formats
+- docs/           — documentation and specifications
+- src/            — source code / API
 
-Contributie
-- Issues en pull requests zijn welkom. Beschrijf duidelijk wat je toevoegt en voeg tests toe waar mogelijk.
-- Als je specifieke richtlijnen wilt, kan ik een CONTRIBUTING.md toevoegen.
+Contributing
+- Issues and pull requests are welcome. Please describe your changes clearly and add tests where applicable.
+- If you want contributor guidelines, I can add a CONTRIBUTING.md.
 
-Licentie
-- Voeg hier de gewenste licentie toe (bijv. MIT). Wil je dat ik een LICENSE-bestand aanmaak, en welke licentie wil je gebruiken?
+License
+- Add your preferred license here (e.g., MIT). Do you want me to add a LICENSE file, and if so, which license should I use?
 
-Repository hernoemen
-- Ik kan de README bijwerken, maar ik kan de repository niet direct hernoemen vanuit deze interface. Hieronder staan twee manieren om te hernoemen:
+Repository rename
+- I can update the README, but I cannot rename the repository from this interface. Below are two ways to rename it:
 
-1) Via GitHub UI (aanbevolen):
-   Repository -> Settings -> Repository name -> vul `ANWB-charging-and-fuel` in -> Rename
+1) Via the GitHub UI (recommended):
+   Repository -> Settings -> Repository name -> enter `ANWB-charging-and-fuel` -> Rename
 
-2) Via de GitHub REST API (vereist een Personal Access Token met repo-permissies):
+2) Via the GitHub REST API (requires a Personal Access Token with repo permissions):
 
 ```bash
 curl -X PATCH -H "Authorization: token YOUR_TOKEN" \
@@ -64,4 +64,4 @@ curl -X PATCH -H "Authorization: token YOUR_TOKEN" \
 ```
 
 Contact
-- Voor vragen of samenwerking: https://github.com/Dynamix72
+- For questions or collaboration: https://github.com/Dynamix72
