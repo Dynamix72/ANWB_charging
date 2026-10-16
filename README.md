@@ -2,8 +2,6 @@
 
 Dit project verzamelt en beheert informatie over ANWB-laadpunten (EV charging) en tankstations (fuel). Het doel is data over locaties, beschikbaarheid, tarieven en integraties te centraliseren zodat mobiele en web-apps er makkelijk op kunnen bouwen.
 
-Let op: de aanbevolen nieuwe repositorynaam is: `ANWB-charging-and-fuel`.
-
 Features
 - Locaties en metadata van laadpunten (type connector, vermogen, operator)
 - Locaties en metadata van tankstations (brandstoftype, services, openingstijden)
