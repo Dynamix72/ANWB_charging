@@ -2,6 +2,7 @@
 ANWB Fuel & Charging integration entrypoints.
 
 Display name updated to reflect support for both charging locations and fuel stations.
+Includes migration logic to rename existing config entries so the UI shows the new display name.
 """
 
 import logging
@@ -68,9 +69,39 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
 
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """
-    Optional: migrate old config entry data when you bump integration version.
+    Migrate existing config entries to the new integration display name and version.
 
-    Extend this to perform migration steps and return True when successful.
+    - If an existing config entry has the old title "ANWB Charging", rename it to
+      "ANWB Fuel & Charging" so it shows correctly in the Home Assistant UI.
+    - Bumps the entry.version to 2 to indicate migration was applied.
+
+    Return True on success.
     """
-    _LOGGER.debug("ANWB_charging: migrating entry %s (version=%s)", entry.entry_id, entry.version)
+    _LOGGER.debug(
+        "ANWB_charging: migrating entry %s (version=%s)", entry.entry_id, entry.version
+    )
+
+    # Only run migration logic for version 1 entries
+    if entry.version == 1:
+        try:
+            # Rename title if it matches the old display name
+            if entry.title == "ANWB Charging":
+                _LOGGER.info(
+                    "Migrating config entry title for %s -> 'ANWB Fuel & Charging'",
+                    entry.entry_id,
+                )
+                hass.config_entries.async_update_entry(entry, title="ANWB Fuel & Charging")
+
+            # If you need to modify stored data/options also do it here. Example:
+            # data = {**entry.data}
+            # data.setdefault('data_mode', 'chargers')
+            # hass.config_entries.async_update_entry(entry, data=data)
+
+            # Bump version to 2 so migration does not run again
+            entry.version = 2
+            _LOGGER.info("Migration of ANWB entry %s to version 2 complete", entry.entry_id)
+        except Exception as err:
+            _LOGGER.exception("Failed to migrate ANWB config entry %s: %s", entry.entry_id, err)
+            return False
+
     return True
