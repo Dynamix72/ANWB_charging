@@ -27,40 +27,67 @@ Available entities (examples)
 - sensor.anwb_fuel_count
 - sensor.anwb_top_fuel_1 ... sensor.anwb_top_fuel_10
 
-Dashboard examples
-See dashboard_anwb_charging.yaml for a Lovelace example. Below is a short addition that includes the fuel sensors in the update button.
+Examples
 
-In dashboard_anwb_charging.yaml find the update button and add the fuel sensors to the service_data/entity_id list:
+Config flow (UI)
+- When you add the integration under Settings → Devices & Services, you'll be prompted to:
+  - Select a device_tracker/entity that represents your location (GPS).
+  - Optionally enter an OpenRouteService (ORS) API key to enable route-distance calculations.
+  - Choose Data Mode: `chargers`, `fuels`, or `both`.
+  - Choose Fuel Type: `euro95`, `diesel`, or `autogas` (only shown when `fuels` or `both` is selected).
 
-  tap_action:
-    action: call-service
-    service: homeassistant.update_entity
-    service_data:
-      entity_id:
-        - sensor.anwb_cheapest_charger
-        - sensor.anwb_charger_count
-        - sensor.anwb_cheapest_fuel
-        - sensor.anwb_fuel_count
-        - sensor.anwb_top_1
-        - sensor.anwb_top_2
-        - sensor.anwb_top_3
-        - sensor.anwb_top_4
-        - sensor.anwb_top_5
-        - sensor.anwb_top_6
-        - sensor.anwb_top_7
-        - sensor.anwb_top_8
-        - sensor.anwb_top_9
-        - sensor.anwb_top_10
-        - sensor.anwb_top_fuel_1
-        - sensor.anwb_top_fuel_2
-        - sensor.anwb_top_fuel_3
-        - sensor.anwb_top_fuel_4
-        - sensor.anwb_top_fuel_5
-        - sensor.anwb_top_fuel_6
-        - sensor.anwb_top_fuel_7
-        - sensor.anwb_top_fuel_8
-        - sensor.anwb_top_fuel_9
-        - sensor.anwb_top_fuel_10
+Note: The integration uses the UI config flow; manual YAML configuration is not required.
+
+Environment (.env) example
+
+Create a `.env` in the repository or the environment where you run scripts (do NOT commit this file):
+
+OPENROUTESERVICE_API_KEY=your_ors_api_key_here
+ANWB_API_TIMEOUT=10
+
+Lovelace dashboard example
+
+Below is a Lovelace button card example showing an update action that refreshes both charger and fuel sensors. Add this to your Lovelace dashboard or include it in `dashboard_anwb_charging.yaml`.
+
+type: button
+name: Update ANWB data
+tap_action:
+  action: call-service
+  service: homeassistant.update_entity
+  service_data:
+    entity_id:
+      - sensor.anwb_cheapest_charger
+      - sensor.anwb_charger_count
+      - sensor.anwb_cheapest_fuel
+      - sensor.anwb_fuel_count
+      - sensor.anwb_top_1
+      - sensor.anwb_top_2
+      - sensor.anwb_top_3
+      - sensor.anwb_top_4
+      - sensor.anwb_top_5
+      - sensor.anwb_top_6
+      - sensor.anwb_top_7
+      - sensor.anwb_top_8
+      - sensor.anwb_top_9
+      - sensor.anwb_top_10
+      - sensor.anwb_top_fuel_1
+      - sensor.anwb_top_fuel_2
+      - sensor.anwb_top_fuel_3
+      - sensor.anwb_top_fuel_4
+      - sensor.anwb_top_fuel_5
+      - sensor.anwb_top_fuel_6
+      - sensor.anwb_top_fuel_7
+      - sensor.anwb_top_fuel_8
+      - sensor.anwb_top_fuel_9
+      - sensor.anwb_top_fuel_10
+
+Service call examples
+
+- Update a single sensor via Developer Tools → Services:
+  Service: `homeassistant.update_entity`
+  Entity: `sensor.anwb_cheapest_fuel`
+
+- Trigger a full integration update (if the integration exposes a custom update service) — check integration services after installation.
 
 Notes
 - The integration attempts to calculate route distances using OpenRouteService when a destination is provided. If you do not supply an ORS API key, the integration falls back to bounding-box searches only.
