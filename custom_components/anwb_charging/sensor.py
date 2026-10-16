@@ -7,6 +7,7 @@ Improvements over the original:
 - Safer dict access with .get() to avoid KeyError.
 - Adds device_info and better unique_id generation.
 - Returns None for unknown states (HA will show "unavailable"/unknown) instead of nonstandard strings.
+- Adds fuel station sensors analogous to charger sensors (cheapest, count, top N).
 """
 
 import logging
@@ -14,6 +15,7 @@ from typing import Any, Dict, List, Optional
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+
 from .coordinator import RouteCoordinator
 from .const import (
     CONF_ORS_API_KEY,
@@ -70,19 +72,19 @@ def sorted_chargers(data: Dict, hass=None) -> List[Dict]:
             for charger in chargers:
                 info = extract_charger_info(charger)
                 power = info.get("max_power_kw", 0)
-    
+
                 if mode == "AC laders":
                     if power < 50:
                         filtered.append(charger)
-                
+
                 elif mode == "Snelladers":
                     if 50 <= power < 100:
                         filtered.append(charger)
-                
+
                 elif mode == "Ultrasnelladers":
                     if power >= 100:
                         filtered.append(charger)
-                
+
                 else:
                     filtered.append(charger)
 
@@ -154,6 +156,47 @@ def extract_charger_info(charger: Dict) -> Dict:
     }
 
 
+# --- Fuel station helpers ---
+
+def sorted_fuel_stations(data: Dict) -> List[Dict]:
+    """Return sorted fuel stations (items as returned by coordinator._async_fetch_fuels).
+
+    Expected item structure: {"station": {...}, "price": float, "distance_km": float, "duration_minutes": float}
+    """
+    stations = data.get("fuel_stations", []) if data else []
+    valid = []
+
+    for item in stations:
+        # item should be a dict with 'price' numeric
+        if not isinstance(item, dict):
+            continue
+        price = item.get("price")
+        if price is None:
+            continue
+        valid.append(item)
+
+    return sorted(valid, key=lambda x: _safe_float(x.get("price", float("inf"))))
+
+
+def extract_fuel_info(item: Dict) -> Dict:
+    """Extract info from a fuel station item created by the coordinator."""
+    station = item.get("station", {}) if item else {}
+    coords = station.get("coordinates", {}) or {}
+    address = station.get("address", {}) or {}
+
+    return {
+        "price_per_litre": item.get("price"),
+        "currency": station.get("currency") or station.get("price", {}).get("currency") if isinstance(station.get("price"), dict) else None,
+        "street": address.get("streetAddress"),
+        "postal_code": address.get("postalCode"),
+        "city": address.get("city"),
+        "latitude": _safe_float(coords.get("latitude"), None),
+        "longitude": _safe_float(coords.get("longitude"), None),
+        "distance_km": item.get("distance_km"),
+        "duration_minutes": item.get("duration_minutes"),
+    }
+
+
 async def async_setup_entry(hass, entry, async_add_entities):
     """Set up ANWB sensors from a config entry."""
     # Coordinator should be responsible for API key and refresh logic.
@@ -185,9 +228,16 @@ async def async_setup_entry(hass, entry, async_add_entities):
         ),
     ]
 
-    # Create top N sensors (1..10)
+    # Create top N charger sensors (1..10)
     for rank in range(1, 11):
         entities.append(TopChargerSensor(route_coordinator, entry.entry_id, rank))
+
+    # Fuel sensors
+    entities.append(CheapestFuelSensor(route_coordinator, entry.entry_id))
+    entities.append(FuelCountSensor(route_coordinator, entry.entry_id))
+
+    for rank in range(1, 11):
+        entities.append(TopFuelSensor(route_coordinator, entry.entry_id, rank))
 
     async_add_entities(entities)
 
@@ -232,6 +282,7 @@ class CheapestChargerSensor(AnwbBaseSensor):
 
         return chargers[0].get("title")
 
+
 class ChargerCountSensor(AnwbBaseSensor):
     """Sensor that returns the number of (filtered) chargers."""
 
@@ -247,13 +298,14 @@ class ChargerCountSensor(AnwbBaseSensor):
     @property
     def native_value(self) -> int:
         data = self.coordinator.data
-        
+
         if not data:
             return 0
 
         chargers = data.get("chargers", [])
         return len(chargers)
-             
+
+
 class TopChargerSensor(AnwbBaseSensor):
     """Sensor for the Nth top charger."""
 
@@ -273,22 +325,22 @@ class TopChargerSensor(AnwbBaseSensor):
             "chargers",
             []
         )
-    
+
         index = self.rank - 1
-    
+
         if index < 0 or index >= len(chargers):
             return None
-    
+
         charger_data = chargers[index]
-    
+
         if isinstance(charger_data, dict):
             return charger_data.get(
                 "charger",
                 charger_data,
             )
-    
+
         return None
-    
+
     def _charger_item(self):
         chargers = (
             self.coordinator.data or {}
@@ -302,13 +354,13 @@ class TopChargerSensor(AnwbBaseSensor):
         if index < 0 or index >= len(chargers):
             return None
 
-        return chargers[index] 
+        return chargers[index]
 
     @property
     def available(self) -> bool:
         """Alleen beschikbaar als er een laadpaal bestaat."""
         return self._charger() is not None
-    
+
     @property
     def native_value(self) -> Optional[str]:
         charger = self._charger()
@@ -318,12 +370,12 @@ class TopChargerSensor(AnwbBaseSensor):
 
     @property
     def extra_state_attributes(self) -> Dict:
-    
+
         item = self._charger_item()
-    
+
         if item is None:
             return {}
-    
+
         charger = item.get("charger", {})
 
         status = "AVAILABLE"
@@ -376,6 +428,117 @@ class TopChargerSensor(AnwbBaseSensor):
         return {k: v for k, v in attributes.items() if v is not None}
 
 
+# --- Fuel sensors ---
+class CheapestFuelSensor(AnwbBaseSensor):
+    """Sensor that exposes the name/title of the cheapest fuel station."""
+
+    def __init__(self, coordinator, entry_id: Optional[str]):
+        super().__init__(
+            coordinator,
+            entry_id,
+            name="ANWB Cheapest Fuel",
+            unique_id="anwb_cheapest_fuel",
+        )
+        self._attr_icon = "mdi:gas-station"
+
+    @property
+    def native_value(self) -> Optional[str]:
+        stations = sorted_fuel_stations(self.coordinator.data)
+        if not stations:
+            return None
+        station = stations[0].get("station", {})
+        return station.get("title") or station.get("name")
+
+
+class FuelCountSensor(AnwbBaseSensor):
+    """Sensor that returns the number of fuel stations returned by the coordinator."""
+
+    def __init__(self, coordinator, entry_id: Optional[str]):
+        super().__init__(
+            coordinator,
+            entry_id,
+            name="ANWB Fuel Count",
+            unique_id="anwb_fuel_count",
+        )
+        self._attr_icon = "mdi:gas-station"
+
+    @property
+    def native_value(self) -> int:
+        data = self.coordinator.data
+        if not data:
+            return 0
+        stations = data.get("fuel_stations", [])
+        return len(stations)
+
+
+class TopFuelSensor(AnwbBaseSensor):
+    """Sensor for the Nth top fuel station."""
+
+    def __init__(self, coordinator, entry_id: Optional[str], rank: int):
+        super().__init__(
+            coordinator,
+            entry_id,
+            name=f"ANWB Fuel Top {rank}",
+            unique_id=f"anwb_fuel_top_{rank}",
+        )
+        self.rank = rank
+
+    def _station(self):
+        stations = (self.coordinator.data or {}).get("fuel_stations", [])
+        index = self.rank - 1
+        if index < 0 or index >= len(stations):
+            return None
+        item = stations[index]
+        if isinstance(item, dict):
+            return item.get("station", item)
+        return None
+
+    def _fuel_item(self):
+        stations = (self.coordinator.data or {}).get("fuel_stations", [])
+        index = self.rank - 1
+        if index < 0 or index >= len(stations):
+            return None
+        return stations[index]
+
+    @property
+    def available(self) -> bool:
+        return self._station() is not None
+
+    @property
+    def native_value(self) -> Optional[str]:
+        station = self._station()
+        if station is None:
+            return None
+        return station.get("title") or station.get("name")
+
+    @property
+    def extra_state_attributes(self) -> Dict:
+        item = self._fuel_item()
+        if item is None:
+            return {}
+        station = item.get("station", {})
+        info = extract_fuel_info(item)
+
+        attributes = {
+            "rank": self.rank,
+            "price_per_litre": info.get("price_per_litre"),
+            "currency": info.get("currency"),
+            "street": info.get("street"),
+            "postal_code": info.get("postal_code"),
+            "city": info.get("city"),
+            "full_address": ", ".join(
+                filter(None, [info.get("street"), info.get("postal_code"), info.get("city")])
+            ),
+            "latitude": info.get("latitude"),
+            "longitude": info.get("longitude"),
+            "distance_km": info.get("distance_km"),
+            "duration_minutes": info.get("duration_minutes"),
+            "icon": "mdi:gas-station",
+        }
+
+        return {k: v for k, v in attributes.items() if v is not None}
+
+
 # Route sensors left largely as-is, but should be wired to a RouteCoordinator if used.
 class RouteTestSensor(AnwbBaseSensor):
     def __init__(self, coordinator, entry_id: Optional[str]):
@@ -417,6 +580,8 @@ class RouteDistanceSensor(SensorEntity):
             "route_points": len(route.get("coordinates", [])),
             "coordinates": route.get("coordinates", []),
         }
+
+
 class RouteDistanceMarkerSensor(
     CoordinatorEntity,
     SensorEntity,
@@ -462,6 +627,7 @@ class RouteDistanceMarkerSensor(
             ),
         }
 
+
 class RouteGeoJsonSensor(CoordinatorEntity, SensorEntity):
     def __init__(self, coordinator, entry_id: Optional[str]):
         super().__init__(coordinator)
@@ -472,27 +638,27 @@ class RouteGeoJsonSensor(CoordinatorEntity, SensorEntity):
     @property
     def native_value(self):
         route = (self.coordinator.data or {}).get("route") or {}
-    
+
         if not route or not route.get("geojson"):
             return "geen_route"
-    
+
         return "route"
-        
+
     @property
     def extra_state_attributes(self):
         route = (self.coordinator.data or {}).get("route") or {}
         geojson = route.get("geojson", {})
-    
+
         latitude = None
         longitude = None
-    
+
         try:
             coords = geojson["features"][0]["geometry"]["coordinates"][0]
             longitude = coords[0]
             latitude = coords[1]
         except Exception:
             pass
-    
+
         return {
             "geojson": geojson,
             "latitude": latitude,
