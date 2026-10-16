@@ -1,751 +1,321 @@
-from datetime import timedelta
+"""
+Route API client for OpenRouteService (ORS) with Home Assistant integration improvements.
+
+- Uses HA's async_get_clientsession to reuse connection pool.
+- Adds timeouts, retries on 429, and clear exceptions.
+- Does not log API keys or full response bodies.
+- Returns both raw and rounded distance/duration values.
+"""
+
+import asyncio
 import logging
+from typing import Any, Dict, Optional
+from math import cos, radians
 
-from homeassistant.helpers.update_coordinator import (
-    DataUpdateCoordinator,
-)
-
-from .api import RouteApi
-from .geo import (
-    filter_chargers_on_route,
-)
-from .const import (
-    CONF_MAX_DETOUR_KM,
-    CONF_CHARGER_TYPE,
-    CONF_DESTINATION,
-    DEFAULT_MAX_DETOUR_KM,
-    DEFAULT_CHARGER_TYPE,
-)
+import aiohttp
+from aiohttp import ClientResponse
+from aiohttp.client_exceptions import ClientError
+from yarl import URL
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.exceptions import HomeAssistantError
 
 _LOGGER = logging.getLogger(__name__)
 
-from geopy.distance import geodesic
+# OpenRouteService URLs (using new api.heigit.org endpoint)
+GEOCODE_URL = "https://api.heigit.org/pelias/v1/search"
+DIRECTIONS_URL = "https://api.heigit.org/openrouteservice/v2/directions/driving-car/geojson"
+
+# ANWB API
+ANWB_BASE = "https://api.anwb.nl/routing/points-of-interest/v3/all"
 
 
-def point_on_route(route_points, target_km):
-    """
-    Zoek een punt op de route op target_km vanaf de start.
-    """
+class RouteApiError(HomeAssistantError):
+    """Exception raised for ORS API errors."""
 
-    travelled = 0.0
 
-    for i in range(len(route_points) - 1):
+class AnwbApiError(HomeAssistantError):
+    """Raised when ANWB API calls fail."""
 
-        p1 = (
-            route_points[i][1],
-            route_points[i][0],
-        )
 
-        p2 = (
-            route_points[i + 1][1],
-            route_points[i + 1][0],
-        )
+class RouteApi:
+    def __init__(self, hass: HomeAssistant, api_key: str, timeout: float = 10.0) -> None:
+        """Initialize the ORS API client.
 
-        segment = geodesic(p1, p2).km
-
-        if travelled + segment >= target_km:
-            return {
-                "latitude": p2[0],
-                "longitude": p2[1],
-            }
-
-        travelled += segment
-
-    return {
-        "latitude": route_points[-1][1],
-        "longitude": route_points[-1][0],
-    }
-
-class RouteCoordinator(
-    DataUpdateCoordinator
-):
-    """Coordinator voor route-gebaseerde laadpaalselectie met omrijfiltering.
-    
-    Ondersteunt fallback naar simpele laadpaalzoeken als route niet beschikbaar is.
-    """
-
-    def __init__(
-        self,
-        hass,
-        entry,
-        tracker_id,
-        radius,
-        min_power_kw,
-        ors_api_key,
-    ):
-        """Initialiseer RouteCoordinator.
-        
         Args:
-            hass: Home Assistant instance
-            entry: Config entry met instellingen
-            tracker_id: Entity ID van device tracker (voor GPS locatie)
-            radius: Search radius in km rond huidge locatie (vast 10 km)
-            min_power_kw: Minimaal vermogen laadpaal in kW
-            ors_api_key: OpenRouteService API key voor routeberekening
+            hass: Home Assistant instance (used to get shared aiohttp session).
+            api_key: ORS API key (kept private; not logged).
+            timeout: Request timeout in seconds.
         """
-
         self.hass = hass
-        self.entry = entry
+        self.api_key = api_key
+        self._timeout = timeout
+        self._session = async_get_clientsession(hass)
 
-        self.tracker_id = tracker_id
-        self.radius = radius
-        self.min_power_kw = min_power_kw
-        self.ors_api_key = ors_api_key
-
-        # Initialiseer API client
-        self.route_api = RouteApi(hass, ors_api_key)
-
-        # Geen automatische updates - coordinator wordt alleen handmatig aangeroepen
-        super().__init__(
-            hass,
-            logger=_LOGGER,
-            name="ANWB Route Charging",
-            update_interval=None,
-        )
-
-    def _get_config_value(self, key, default):
-        """Haal configuratiewaarde op uit options of data.
-        
-        Prioriteit:
-        1. entry.options (door gebruiker ingesteld in UI)
-        2. entry.data (initiële setup waarden)
-        3. default waarde
-        
-        Args:
-            key: Configuratiekey
-            default: Default waarde als key niet gevonden
-            
-        Returns:
-            Configuratiewaarde
-        """
-        return (
-            self.entry.options.get(key)
-            or self.entry.data.get(key)
-            or default
-        )
-
-    async def _async_update_data(self):
-        """Voer volledige route en laadpaalanalyse uit.
-        
-        Dit is de main methode die wordt aangeroepen wanneer gebruiker
-        de "Update" knop indrukt in de UI.
-        
-        FALLBACK: Als geen bestemming of route error:
-        - Zoekt laadpalen bij huidge locatie
-        - Sorteert alleen op prijs
-        - Berekent afstand en tijd naar elk station
-        
-        Returns:
-            Dict met route data (of None), gefilterde laadpalen en voertuigpositie
-        """
-
-        charger_type_entity = self.hass.states.get(
-            "input_select.anwb_lader_filter"
-        )
-
-        if charger_type_entity:
-            charger_type = charger_type_entity.state
-        else:
-            charger_type = DEFAULT_CHARGER_TYPE
-        
-        _LOGGER.warning(
-            "Geselecteerd ladertype: %s",
-            charger_type,
-        )
-       
-        _LOGGER.warning(
-            "Actief laadfilter: %s",
-            charger_type,
-        )
-     
-        destination_entity = self.hass.states.get(
-            "input_text.anwb_route_destination"
-        )
-        
-        target_km = None
-        if destination_entity:
-            destination = (destination_entity.state or "").strip()
-            distance_entity = self.hass.states.get(
-                "input_number.anwb_route_distance"
-            )
-            
-            try:
-                target_km = float(distance_entity.state)
-            except Exception:
-                target_km = 100
-        else:
-            destination = ""
-
-        # Haal huidge voertuigpositie op via device tracker
-        tracker = self.hass.states.get(
-            self.tracker_id
-        )
-
-        if tracker is None:
-            _LOGGER.error(
-                "Tracker %s niet gevonden",
-                self.tracker_id,
-            )
-            return {
-                "route": None,
-                "chargers": [],
-            }
-
-        # Extraheer GPS coordinaten
-        vehicle_lat = (
-            tracker.attributes.get(
-                "latitude"
-            )
-        )
-
-        vehicle_lon = (
-            tracker.attributes.get(
-                "longitude"
-            )
-        )
-
-        if (
-            vehicle_lat is None
-            or vehicle_lon is None
-        ):
-            _LOGGER.error(
-                "GPS positie ontbreekt"
-            )
-            return {
-                "route": None,
-                "chargers": [],
-            }
-
-        # FALLBACK: Als geen bestemming ingevuld, ga direct naar laadpalen zoeken
-        if not destination:
-            _LOGGER.info(
-                "Geen bestemming ingevuld - FALLBACK naar simpel laadpaal zoeken"
-            )
-            return await self._async_fallback_chargers(
-                vehicle_lat,
-                vehicle_lon,
-                charger_type,
-                target_km,  # Pas eventuele afstand toe ook zonder route
-            )
-
-        # STAP 1: Bereken route via OpenRouteService
-        route = None
-        try:
-            _LOGGER.info(
-                "Route berekenen naar %s ( ladertype: %s)",
-                destination,
-                charger_type,
-            )
-
-            route = await self.route_api.get_route(
-                vehicle_lat,
-                vehicle_lon,
-                destination,
-            )
-            
-            _LOGGER.warning(
-                "Eerste routepunt: %s",
-                route["coordinates"][0]
-            )
-            
-            _LOGGER.warning(
-                "Laatste routepunt: %s",
-                route["coordinates"][-1]
-            )
-            
-            _LOGGER.warning(
-                "Route afstand: %.1f km",
-                route["distance_km"]
-            )            
-            search_point = point_on_route(
-                route["coordinates"],
-                target_km,
-            )
-           
-            _LOGGER.warning(
-                "Zoekpunt op route: %.5f, %.5f",
-                search_point["latitude"],
-                search_point["longitude"]
-            )
-            
-            _LOGGER.warning(
-                "Auto positie: %.5f, %.5f",
-                vehicle_lat,
-                vehicle_lon
-            )
-            _LOGGER.info(
-                "Zoekpunt op %.0f km van route: %.5f, %.5f",
-                target_km,
-                search_point["latitude"],
-                search_point["longitude"],
-            )
-            _LOGGER.info(
-                "Route afstand=%s km tijd=%s min",
-                route["distance_km"],
-                route["duration_min"],
-            )
-
-        except Exception as err:
-            # FALLBACK: Route error (quota overschreden, timeout, etc)
-            _LOGGER.warning(
-                "Route berekening mislukt (%s) - FALLBACK naar simpel laadpaal zoeken",
-                err,
-            )
-            return await self._async_fallback_chargers(
-                vehicle_lat,
-                vehicle_lon,
-                charger_type,
-                target_km,
-            )
-
-        # STAP 2: bepaal zoekradius
-        
-        if destination:
-            # Bij route-gebaseerd zoeken altijd de standaard radius
-            search_radius = self.radius
-        else:
-            # Zonder bestemming zoeken rond huidige locatie
-            search_radius = (
-                min(target_km, self.radius)
-                if target_km
-                else self.radius
-            )
-        
-        anwb_data = await self.route_api.get_chargers(
-            search_point["latitude"],
-            search_point["longitude"],
-            search_radius,
-        )
-
-        chargers = anwb_data.get(
-            "value",
-            []
-        )
-        
-        if chargers:
-            c = chargers[0]
-        
-            _LOGGER.warning(
-                "Eerste laadpaal: %s",
-                c.get("title")
-            )
-        
-            _LOGGER.warning(
-                "Coords: %s",
-                c.get("coordinates")
-            )
-        _LOGGER.info(
-            "ANWB laadpalen gevonden=%s",
-            len(chargers),
-        )
-
-        # STAP 3: Filter laadpalen op route
-        # Filters:
-        # - Laadpaal beschikbaar (AVAILABLE of CHARGING status)
-        # - Juiste ladertype (AC/Snellader/Ultrasnellader)
-        # - Voor de auto op de route
-        filtered = []
-        
-        for charger in chargers:
-        
-        
-            evses = charger.get(
-                "electricVehicleSupplyEquipment",
-                []
-            )
-        
-            statuses = [
-                evse.get("status")
-                for evse in evses
-                if isinstance(evse, dict)
-            ]
-        
-            if (
-                "AVAILABLE" not in statuses
-                and "CHARGING" not in statuses
-            ):
-                continue
-        
-            max_power = 0
-        
-            for evse in evses:
-                for connector in evse.get(
-                    "connectors",
-                    []
-                ):
-                    max_power = max(
-                        max_power,
-                        connector.get(
-                            "maxPowerInKW",
-                            0
-                        )
-                    )
-        
-             # Filter op ladertype
-            if charger_type == "AC laders" and max_power >= 50:
-                continue
-            elif charger_type == "Snelladers" and (max_power < 50 or max_power >= 100):
-                continue
-            elif charger_type == "Ultrasnelladers" and max_power < 100:
-                continue
-            if charger_type == "AC laders" and max_power >= 50:
-                continue
-        
-            price_data = charger.get("price")
-            
-            # normale ANWB prijs
-            if (
-                price_data
-                and price_data.get("price") is not None
-            ):
-                price = float(
-                    price_data.get("price")
-                )
-            
-            else:
-                # fallback voor Tesla e.d.
-                energy_prices = []
-            
-                for evse in charger.get(
-                    "electricVehicleSupplyEquipment",
-                    []
-                ):
-                    for connector in evse.get(
-                        "connectors",
-                        []
-                    ):
-                        for tariff in connector.get(
-                            "prices",
-                            []
-                        ):
-                            for component in tariff.get(
-                                "priceComponents",
-                                []
-                            ):
-            
-                                if component.get("code") == "ENERGY":
-            
-                                    value = component.get("value")
-            
-                                    if value is not None:
-                                        energy_prices.append(
-                                            float(value)
-                                        )
-            
-                if not energy_prices:
-                    continue
-            
-                price = energy_prices[0]
-        
-            filtered.append({
-                "charger": charger,
-                "price": price,
-                "power": max_power,
-            })
-        
-        # goedkoopste eerst
-        filtered.sort(
-            key=lambda c: c["price"]
-        )
-      
-        # top 10
-        filtered = filtered[:10]
-        
-        # Bereken echte omrijafstand tov originele route
-        for item in filtered:
-        
-            charger = item["charger"]
-        
-            coords = charger.get(
-                "coordinates",
-                {}
-            )
-        
-            _LOGGER.warning(
-                "Coordinates van %s = %s",
-                charger.get("title"),
-                coords,
-            )
-        
-            charger_lat = coords.get("latitude")
-            charger_lon = coords.get("longitude")
-        
-            if (
-                charger_lat is None
-                or charger_lon is None
-            ):
-                item["distance_km"] = 0
-                item["duration_minutes"] = 0
-                continue
-        
-            try:
-        
-                detour = await self.route_api.calculate_detour(
-                    vehicle_lat,
-                    vehicle_lon,
-                    charger_lat,
-                    charger_lon,
-                    destination,
-                )
-        
-                item["distance_km"] = detour[
-                    "detour_km"
-                ]
-        
-                item["duration_minutes"] = detour[
-                    "extra_minutes"
-                ]
-        
-                _LOGGER.warning(
-                    "%s -> %+0.1f km / %+0.1f min",
-                    charger.get("title"),
-                    item["distance_km"],
-                    item["duration_minutes"],
-                )
-        
-            except Exception as err:
-        
-                _LOGGER.warning(
-                    "Omrijberekening mislukt voor %s: %s",
-                    charger.get("title"),
-                    err,
-                )
-        
-                item["distance_km"] = 0
-                item["duration_minutes"] = 0
-        
-        _LOGGER.warning("=== GESORTEERDE TOPLIJST ===")
-        
-        for idx, item in enumerate(filtered[:20], start=1):
-            _LOGGER.warning(
-                "%s | %s | %.4f",
-                idx,
-                item["charger"].get("title"),
-                item["price"],
-            )
-        _LOGGER.info(
-            "Route laadpalen over=%s",
-            len(filtered),
-        )
-        
-        _LOGGER.info(
-            "Top 10 goedkoopste laadpalen op route=%s",
-            len(filtered),
-        )
-
-        return {
-            "route": route,
-            "chargers": filtered,
-            "vehicle": {
-                "latitude": vehicle_lat,
-                "longitude": vehicle_lon,
-            },
-            "route_marker": {
-                "latitude": search_point["latitude"],
-                "longitude": search_point["longitude"],
-                "distance_km": target_km,
-            },
-            "destination": destination,
-            "charger_type": charger_type,
-        }
-
-    async def _async_fallback_chargers(
+    async def _request_json(
         self,
-        vehicle_lat,
-        vehicle_lon,
-        charger_type,
-        target_km=None,
-    ):
-        """FALLBACK: Zoek laadpalen bij huidge locatie zonder routeberekening.
-        
-        Dit wordt gebruikt als:
-        - Geen bestemming ingevuld
-        - Route API error (quota overschreden, timeout, etc)
-        
-        Als target_km opgegeven en kleiner dan self.radius, wordt target_km als zoekstraal gebruikt.
-        
-        Args:
-            vehicle_lat: Huidge breedtegraad
-            vehicle_lon: Huidge lengtegraad
-            charger_type: Ladertype filter
-            target_km: Optionele afstand om te gebruiken als zoekstraal (als < self.radius)
-            
-        Returns:
-            Dict met laadpalen gesorteerd op prijs + afstand/tijd naar stations
-        """
-        _LOGGER.info(
-            "FALLBACK: Laadpalen zoeken op huidge locatie (geen route)"
-        )
+        method: str,
+        url: str,
+        *,
+        params: Optional[Dict] = None,
+        json: Optional[Dict] = None,
+        headers: Optional[Dict] = None,
+        retries: int = 2,
+        use_auth_header: bool = False,
+    ) -> Dict[str, Any]:
+        """Perform an HTTP request and return parsed JSON with retries for 429."""
+        req_headers = dict(headers or {})
 
-        # Bepaal zoekstraal: als target_km kleiner is dan default radius, gebruik target_km
-        if target_km and target_km < self.radius:
-            search_radius = target_km
-            _LOGGER.info(
-                "FALLBACK: Gebruik opgegeven afstand %.1f km als zoekstraal (kleiner dan default %.1f km)",
-                target_km,
-                self.radius,
-            )
+        if use_auth_header:
+            req_headers["Authorization"] = self.api_key
+
+        if params is None:
+            params = {}
         else:
-            search_radius = self.radius
-            _LOGGER.info(
-                "FALLBACK: Gebruik default zoekstraal %.1f km",
-                self.radius,
-            )
+            params = dict(params)
 
-        # Haal laadpalen op van ANWB
-        anwb_data = await self.route_api.get_chargers(
-            vehicle_lat,
-            vehicle_lon,
-            search_radius,
-        )
+        if not use_auth_header and "api_key" not in params:
+            params["api_key"] = self.api_key
 
-        chargers = anwb_data.get("value", [])
+        attempt = 0
+        backoff = 1.0
 
-        _LOGGER.info(
-            "FALLBACK: %d laadpalen gevonden",
-            len(chargers),
-        )
-
-        # Eenvoudig filter: beschikbaarheid en ladertype
-        filtered = []
-        for charger in chargers:
-            # Check beschikbaarheid
-            evses = charger.get("electricVehicleSupplyEquipment", [])
-            statuses = [evse.get("status") for evse in evses if isinstance(evse, dict)]
-            
-            if "AVAILABLE" not in statuses and "CHARGING" not in statuses:
-                continue
-
-            # Check ladertype
-            max_power = 0
-            for evse in evses:
-                for connector in evse.get("connectors", []):
-                    max_power = max(max_power, connector.get("maxPowerInKW", 0))
-
-            # Filter op ladertype
-            if charger_type == "AC laders" and max_power >= 50:
-                continue
-            elif charger_type == "Snelladers" and (max_power < 50 or max_power >= 100):
-                continue
-            elif charger_type == "Ultrasnelladers" and max_power < 100:
-                continue
-
-            # Extract prijs
-            price_data = charger.get("price")
-            
-            if (
-                price_data
-                and price_data.get("price") is not None
-            ):
-                price = float(
-                    price_data.get("price")
-                )
-            
-            else:
-                energy_prices = []
-            
-                for evse in charger.get(
-                    "electricVehicleSupplyEquipment",
-                    []
-                ):
-                    for connector in evse.get(
-                        "connectors",
-                        []
-                    ):
-                        for tariff in connector.get(
-                            "prices",
-                            []
-                        ):
-                            for component in tariff.get(
-                                "priceComponents",
-                                []
-                            ):
-            
-                                if component.get("code") == "ENERGY":
-            
-                                    value = component.get("value")
-            
-                                    if value is not None:
-                                        energy_prices.append(
-                                            float(value)
-                                        )
-            
-                if not energy_prices:
-                    continue
-            
-                price = energy_prices[0]
-
-            filtered.append({
-                "charger": charger,
-                "price": price,
-                "power": max_power,
-                "distance_km": 0,
-                "duration_minutes": 0,
-            })
-
-        # Sorteer op prijs
-        filtered.sort(key=lambda c: c["price"])
-
-        # Top 10
-        filtered = filtered[:10]
-
-        _LOGGER.info(
-            "FALLBACK: %d laadpalen na price filter (top 10)",
-            len(filtered),
-        )
-
-        # Bereken afstand en tijd naar elk laadstation
-        for item in filtered:
-            charger = item["charger"]
-            coords = charger.get("coordinates", {})
-            
-            charger_lat = coords.get("latitude")
-            charger_lon = coords.get("longitude")
-            
-            if charger_lat is None or charger_lon is None:
-                item["distance_km"] = 0
-                item["duration_minutes"] = 0
-                continue
-            
+        while True:
+            attempt += 1
             try:
-                # Bereken route van huidge locatie naar laadstation
-                route_to_charger = await self.route_api.get_route(
-                    vehicle_lat,
-                    vehicle_lon,
-                    f"{charger_lat},{charger_lon}",
-                )
-                
-                item["distance_km"] = round(route_to_charger["distance_km"], 1)
-                item["duration_minutes"] = round(route_to_charger["duration_min"], 0)
-                
-                _LOGGER.warning(
-                    "FALLBACK: %s -> %.1f km / %.0f min",
-                    charger.get("title"),
-                    item["distance_km"],
-                    item["duration_minutes"],
-                )
-                
-            except Exception as err:
-                _LOGGER.warning(
-                    "FALLBACK: Route berekening naar %s mislukt: %s",
-                    charger.get("title"),
-                    err,
-                )
-                item["distance_km"] = 0
-                item["duration_minutes"] = 0
+                timeout = aiohttp.ClientTimeout(total=self._timeout)
+                async with self._session.request(method, url, params=params, json=json, headers=req_headers, timeout=timeout) as response:
+                    return await self._handle_response(response)
+            except ClientError as err:
+                _LOGGER.debug("Network error on ORS request to %s: %s", url, err)
+                raise RouteApiError(f"Network error when calling ORS: {err}") from err
+            except asyncio.TimeoutError as err:
+                _LOGGER.debug("Timeout calling ORS %s: %s", url, err)
+                raise RouteApiError("Timeout when calling ORS") from err
+            except RouteApiError as err:
+                if "429" in str(err) and attempt <= retries:
+                    _LOGGER.warning("ORS rate limited (429). Retry %d/%d after %ss", attempt, retries, backoff)
+                    await asyncio.sleep(backoff)
+                    backoff *= 2
+                    continue
+                raise
 
-        _LOGGER.info(
-            "FALLBACK: %d laadpalen beschikbaar met afstand/tijd berekend",
-            len(filtered),
-        )
+    async def _handle_response(self, response: ClientResponse) -> Dict[str, Any]:
+        """Validate response status and parse JSON, raising RouteApiError on error."""
+        status = response.status
+        text_snippet = None
+        try:
+            text = await response.text()
+            text_snippet = text[:1000]
+            _LOGGER.debug("ORS response status=%s body_snippet=%s", status, text_snippet)
+        except Exception:
+            _LOGGER.debug("Unable to read response text for debug logging (status=%s).", status)
+
+        if status == 429:
+            raise RouteApiError("ORS HTTP error 429: rate limited")
+
+        if status < 200 or status >= 300:
+            raise RouteApiError(f"ORS HTTP error {status}: {text_snippet or 'no body available'}")
+
+        try:
+            data = await response.json()
+        except Exception as err:
+            raise RouteApiError(f"Failed to decode ORS JSON response: {err}. Body snippet: {text_snippet or 'none'}") from err
+
+        return data
+
+    async def geocode(self, destination: str) -> Dict[str, float]:
+        """Geocode a destination string to latitude/longitude."""
+        if "," in destination:
+            try:
+                lat, lon = destination.split(",")
+                return {"latitude": float(lat.strip()), "longitude": float(lon.strip())}
+            except ValueError:
+                pass
+
+        params = {"text": destination, "size": 1}
+        data = await self._request_json("GET", GEOCODE_URL, params=params, use_auth_header=False)
+
+        features = data.get("features") or []
+        if not features:
+            raise RouteApiError(f"Destination not found: {destination}")
+
+        geometry = features[0].get("geometry", {})
+        coords = geometry.get("coordinates")
+        if not coords or len(coords) < 2:
+            raise RouteApiError("Invalid geocode response from ORS")
+
+        lon, lat = coords[0], coords[1]
+        return {"latitude": float(lat), "longitude": float(lon)}
+
+    async def get_route(self, start_lat: float, start_lon: float, destination: str) -> Dict[str, Any]:
+        """Get driving route from start to destination."""
+        dest = await self.geocode(destination)
+        payload = {"coordinates": [[start_lon, start_lat], [dest["longitude"], dest["latitude"]]]}
+        data = await self._request_json("POST", DIRECTIONS_URL, json=payload, use_auth_header=True)
+
+        features = data.get("features") or []
+        if not features:
+            raise RouteApiError("ORS directions returned no features")
+
+        feature = features[0]
+        properties = feature.get("properties", {})
+        summary = properties.get("summary", {})
+        distance_m = summary.get("distance")
+        duration_s = summary.get("duration")
+        coords = feature.get("geometry", {}).get("coordinates", [])
+
+        if distance_m is None or duration_s is None:
+            raise RouteApiError("ORS directions response missing summary distance/duration")
 
         return {
-            "route": None,  # Geen route berekend
-            "chargers": filtered,
-            "vehicle": {
-                "latitude": vehicle_lat,
-                "longitude": vehicle_lon,
-            },
-            "destination": None,
-            "charger_type": charger_type,
+            "destination": destination,
+            "distance_m": float(distance_m),
+            "distance_km": round(float(distance_m) / 1000.0, 1),
+            "duration_s": float(duration_s),
+            "duration_min": round(float(duration_s) / 60.0, 1),
+            "coordinates": coords,
+            "geojson": data,
         }
+
+    async def calculate_detour(
+        self,
+        start_lat: float,
+        start_lon: float,
+        charger_lat: float,
+        charger_lon: float,
+        destination: str,
+    ) -> Dict[str, Any]:
+        """Calculate detour distance and extra time when visiting a charger on the way."""
+        direct_route = await self.get_route(start_lat, start_lon, destination)
+        dest_coords = await self.geocode(destination)
+        payload = {
+            "coordinates": [[start_lon, start_lat], [charger_lon, charger_lat], [dest_coords["longitude"], dest_coords["latitude"]]]
+        }
+        route_via = await self._request_json("POST", DIRECTIONS_URL, json=payload, use_auth_header=True)
+
+        features = route_via.get("features") or []
+        if not features:
+            raise RouteApiError("ORS directions (via charger) returned no features")
+
+        summary = features[0].get("properties", {}).get("summary", {})
+        if not summary:
+            raise RouteApiError("ORS directions (via charger) response missing summary")
+
+        route_via_distance_m = summary.get("distance")
+        route_via_duration_s = summary.get("duration")
+
+        if route_via_distance_m is None or route_via_duration_s is None:
+            raise RouteApiError("ORS directions (via charger) missing distance/duration")
+
+        detour_km = round((float(route_via_distance_m) - float(direct_route["distance_m"])) / 1000.0, 1)
+        extra_minutes = round((float(route_via_duration_s) - float(direct_route["duration_s"])) / 60.0, 1)
+
+        return {"detour_km": detour_km, "extra_minutes": extra_minutes}
+
+    @staticmethod
+    def _compute_bbox(lat: float, lon: float, radius_km: float) -> str:
+        """Compute a simple bounding box around (lat, lon) given radius in kilometers."""
+        lat_f = float(lat)
+        lon_f = float(lon)
+        radius = float(radius_km)
+
+        lat_delta = radius / 111.0
+        lon_delta = radius / (111.0 * cos(radians(lat_f)) if cos(radians(lat_f)) != 0 else 1.0)
+
+        return f"{lat_f - lat_delta},{lon_f - lon_delta},{lat_f + lat_delta},{lon_f + lon_delta}"
+
+    async def _request_anwb(
+        self,
+        url: str,
+        *,
+        retries: int = 2,
+        params: Optional[Dict[str, Any]] = None,
+        headers: Optional[Dict[str, str]] = None,
+    ) -> Dict[str, Any]:
+        """Perform a GET request to ANWB and return parsed JSON with retries."""
+        attempt = 0
+        backoff = 1.0
+
+        while True:
+            attempt += 1
+            try:
+                timeout = aiohttp.ClientTimeout(total=self._timeout)
+                async with self._session.get(url, params=params, headers=headers, timeout=timeout) as resp:
+                    status = resp.status
+                    try:
+                        text = await resp.text()
+                        snippet = (text[:1000] + "...") if len(text) > 1000 else text
+                    except Exception:
+                        snippet = "<unable to read body>"
+
+                    _LOGGER.debug("ANWB HTTP status=%s url=%s", status, url)
+
+                    if status == 429:
+                        if attempt <= retries:
+                            _LOGGER.warning("ANWB rate limited (429). Retry %d/%d in %ss", attempt, retries, backoff)
+                            await asyncio.sleep(backoff)
+                            backoff *= 2
+                            continue
+                        raise AnwbApiError("ANWB rate limited (429)")
+
+                    if 500 <= status < 600 and attempt <= retries:
+                        _LOGGER.warning("ANWB server error %s. Retry %d/%d in %ss", status, attempt, retries, backoff)
+                        await asyncio.sleep(backoff)
+                        backoff *= 2
+                        continue
+
+                    if status < 200 or status >= 300:
+                        raise AnwbApiError(f"ANWB HTTP error {status}: {snippet or 'no body'}")
+
+                    try:
+                        data = await resp.json()
+                    except Exception as err:
+                        raise AnwbApiError(f"Failed to decode ANWB JSON response: {err}. Body snippet: {snippet}") from err
+
+                    return data
+
+            except (aiohttp.ClientError, asyncio.TimeoutError) as err:
+                _LOGGER.debug("Network error calling ANWB API: %s", err)
+                if attempt <= retries:
+                    _LOGGER.warning("Network error when calling ANWB; retry %d/%d in %ss", attempt, retries, backoff)
+                    await asyncio.sleep(backoff)
+                    backoff *= 2
+                    continue
+                raise AnwbApiError(f"Network error when calling ANWB API: {err}") from err
+
+    async def get_chargers(self, lat: float, lon: float, radius_km: float) -> Dict[str, Any]:
+        """Fetch chargers from ANWB within the bounding box defined by lat/lon and radius_km."""
+        try:
+            lat_f = float(lat)
+            lon_f = float(lon)
+            radius_f = float(radius_km)
+        except (TypeError, ValueError) as err:
+            raise AnwbApiError(f"Invalid lat/lon/radius: {err}") from err
+
+        bbox = self._compute_bbox(lat_f, lon_f, radius_f)
+        params = {"bounding-box-filter": bbox, "type-filter": "CHARGING_LOCATION"}
+        url = str(URL(ANWB_BASE).with_query(params))
+
+        data = await self._request_anwb(url)
+        if not isinstance(data, dict):
+            return {"value": []}
+        return data
+
+    async def get_fuel_stations(self, lat: float, lon: float, radius_km: float) -> Dict[str, Any]:
+        """Fetch fuel stations from ANWB within the bounding box defined by lat/lon and radius_km."""
+        try:
+            lat_f = float(lat)
+            lon_f = float(lon)
+            radius_f = float(radius_km)
+        except (TypeError, ValueError) as err:
+            raise AnwbApiError(f"Invalid lat/lon/radius: {err}") from err
+
+        bbox = self._compute_bbox(lat_f, lon_f, radius_f)
+        params = {"bounding-box-filter": bbox, "type-filter": "FUEL_STATION"}
+        url = str(URL(ANWB_BASE).with_query(params))
+
+        data = await self._request_anwb(url)
+        if not isinstance(data, dict):
+            return {"value": []}
+        return data
