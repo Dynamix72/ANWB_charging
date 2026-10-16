@@ -1,5 +1,5 @@
 """
-Coordinator for ANWB route-based selection and fuel/charger fetching.
+Coordinator for ANWB Fuel & Charging route-based selection and fuel/charger fetching.
 
 This module implements RouteCoordinator which is responsible for:
 - Deciding whether to fetch chargers, fuel stations, or both (data_mode).
@@ -52,7 +52,7 @@ def point_on_route(route_points, target_km):
 
 
 class RouteCoordinator(DataUpdateCoordinator):
-    """Coordinator voor route-gebaseerde ANWB selectie."""
+    """Coordinator voor route-gebaseerde ANWB Fuel & Charging selectie."""
 
     def __init__(self, hass, entry, tracker_id, radius, min_power_kw, ors_api_key):
         self.hass = hass
@@ -66,7 +66,7 @@ class RouteCoordinator(DataUpdateCoordinator):
         super().__init__(
             hass,
             logger=_LOGGER,
-            name="ANWB Route Charging",
+            name="ANWB Fuel & Charging",
             update_interval=None,
         )
 

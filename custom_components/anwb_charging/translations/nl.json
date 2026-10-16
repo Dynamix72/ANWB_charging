@@ -2,12 +2,12 @@
   "config": {
     "step": {
       "user": {
-        "title": "ANWB Charging",
-        "description": "Configure ANWB Charging",
+        "title": "ANWB Fuel & Charging",
+        "description": "Configureer ANWB Fuel & Charging",
         "data": {
           "device_tracker": "Device Tracker",
-          "data_mode": "Select data source",
-          "fuel_type": "Fuel type",
+          "data_mode": "Welke data wil je ophalen?",
+          "fuel_type": "Brandstoftype",
           "radius": "Radius (km)"
         }
       }
@@ -16,12 +16,12 @@
   "options": {
     "step": {
       "init": {
-        "title": "ANWB options",
-        "description": "Adjust the data source and fuel type",
+        "title": "ANWB opties",
+        "description": "Pas de bron van data en het brandstoftype aan",
         "data": {
-          "data_mode": "Select data source",
-          "fuel_type": "Fuel type",
-          "ors_api_key": "OpenRouteService API key"
+          "data_mode": "Welke data wil je ophalen?",
+          "fuel_type": "Brandstoftype",
+          "ors_api_key": "OpenRouteService API sleutel"
         }
       }
     }

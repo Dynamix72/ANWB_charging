@@ -1,5 +1,7 @@
 """
-ANWB Charging integration entrypoints.
+ANWB Fuel & Charging integration entrypoints.
+
+Display name updated to reflect support for both charging locations and fuel stations.
 """
 
 import logging
@@ -71,10 +73,4 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     Extend this to perform migration steps and return True when successful.
     """
     _LOGGER.debug("ANWB_charging: migrating entry %s (version=%s)", entry.entry_id, entry.version)
-    # Example migration stub:
-    # if entry.version == 1:
-    #     data = {**entry.data}
-    #     # transform data...
-    #     hass.config_entries.async_update_entry(entry, data=data, version=2)
-    #     return True
     return True

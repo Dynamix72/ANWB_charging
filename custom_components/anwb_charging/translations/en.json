@@ -2,8 +2,8 @@
   "config": {
     "step": {
       "user": {
-        "title": "ANWB Charging",
-        "description": "Configure the ANWB charging integration",
+        "title": "ANWB Fuel & Charging",
+        "description": "Configure the ANWB Fuel & Charging integration",
         "data": {
           "device_tracker": "GPS device tracker",
           "data_mode": "What do you want to fetch?",
