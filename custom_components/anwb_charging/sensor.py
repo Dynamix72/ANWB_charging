@@ -8,6 +8,8 @@ Improvements over the original:
 - Adds device_info and better unique_id generation.
 - Returns None for unknown states (HA will show "unavailable"/unknown) instead of nonstandard strings.
 - Adds fuel station sensors analogous to charger sensors (cheapest, count, top N).
+
+Note: noisy `_LOGGER.warning` calls have been reduced in the codebase; use logging config to adjust verbosity.
 """
 
 import logging
@@ -582,85 +584,3 @@ class RouteDistanceSensor(SensorEntity):
         }
 
 
-class RouteDistanceMarkerSensor(
-    CoordinatorEntity,
-    SensorEntity,
-):
-
-    def __init__(self, coordinator, entry_id):
-        super().__init__(coordinator)
-
-        self._attr_name = "ANWB Route Marker"
-        self._attr_unique_id = (
-            f"anwb_route_marker_{entry_id}"
-        )
-
-    @property
-    def native_value(self):
-        marker = (
-            self.coordinator.data or {}
-        ).get(
-            "route_marker",
-            {}
-        )
-
-        return marker.get(
-            "distance_km"
-        )
-
-    @property
-    def extra_state_attributes(self):
-
-        marker = (
-            self.coordinator.data or {}
-        ).get(
-            "route_marker",
-            {}
-        )
-
-        return {
-            "latitude": marker.get(
-                "latitude"
-            ),
-            "longitude": marker.get(
-                "longitude"
-            ),
-        }
-
-
-class RouteGeoJsonSensor(CoordinatorEntity, SensorEntity):
-    def __init__(self, coordinator, entry_id: Optional[str]):
-        super().__init__(coordinator)
-        self._attr_name = "ANWB Route GeoJSON"
-        self._attr_unique_id = f"anwb_route_geojson_{entry_id or ''}"
-        self._attr_should_poll = False
-
-    @property
-    def native_value(self):
-        route = (self.coordinator.data or {}).get("route") or {}
-
-        if not route or not route.get("geojson"):
-            return "geen_route"
-
-        return "route"
-
-    @property
-    def extra_state_attributes(self):
-        route = (self.coordinator.data or {}).get("route") or {}
-        geojson = route.get("geojson", {})
-
-        latitude = None
-        longitude = None
-
-        try:
-            coords = geojson["features"][0]["geometry"]["coordinates"][0]
-            longitude = coords[0]
-            latitude = coords[1]
-        except Exception:
-            pass
-
-        return {
-            "geojson": geojson,
-            "latitude": latitude,
-            "longitude": longitude,
-        }

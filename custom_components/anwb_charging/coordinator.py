@@ -1,321 +1,333 @@
 """
-Route API client for OpenRouteService (ORS) with Home Assistant integration improvements.
+Coordinator for ANWB route-based selection and fuel/charger fetching.
 
-- Uses HA's async_get_clientsession to reuse connection pool.
-- Adds timeouts, retries on 429, and clear exceptions.
-- Does not log API keys or full response bodies.
-- Returns both raw and rounded distance/duration values.
+This module implements RouteCoordinator which is responsible for:
+- Deciding whether to fetch chargers, fuel stations, or both (data_mode).
+- Respecting runtime overrides via input_select.anwb_data_mode and input_select.anwb_fuel_type when present.
+- Performing efficient bounding-box queries against the ANWB POI endpoint and calculating
+  distances/durations using OpenRouteService when needed.
+
+Changes in recent updates:
+- Added support for fuel station fetching and parsing (euro95/diesel/autogas).
+- Reduced noisy logging: many former `_LOGGER.warning` calls were replaced with `info` or `debug`.
 """
 
-import asyncio
+from datetime import timedelta
 import logging
-from typing import Any, Dict, Optional
-from math import cos, radians
 
-import aiohttp
-from aiohttp import ClientResponse
-from aiohttp.client_exceptions import ClientError
-from yarl import URL
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from homeassistant.exceptions import HomeAssistantError
+from geopy.distance import geodesic
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+
+from .api import RouteApi
+from .const import (
+    CONF_CHARGER_TYPE,
+    CONF_DATA_MODE,
+    CONF_DESTINATION,
+    CONF_FUEL_TYPE,
+    DATA_MODES,
+    DEFAULT_CHARGER_TYPE,
+    DEFAULT_DATA_MODE,
+    DEFAULT_FUEL_TYPE,
+    DEFAULT_MAX_DETOUR_KM,
+    FUEL_TYPES,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
-# OpenRouteService URLs (using new api.heigit.org endpoint)
-GEOCODE_URL = "https://api.heigit.org/pelias/v1/search"
-DIRECTIONS_URL = "https://api.heigit.org/openrouteservice/v2/directions/driving-car/geojson"
 
-# ANWB API
-ANWB_BASE = "https://api.anwb.nl/routing/points-of-interest/v3/all"
+def point_on_route(route_points, target_km):
+    """Zoek een punt op de route op target_km vanaf de start."""
+    travelled = 0.0
+    for i in range(len(route_points) - 1):
+        p1 = (route_points[i][1], route_points[i][0])
+        p2 = (route_points[i + 1][1], route_points[i + 1][0])
+        segment = geodesic(p1, p2).km
+
+        if travelled + segment >= target_km:
+            return {"latitude": p2[0], "longitude": p2[1]}
+
+        travelled += segment
+
+    return {"latitude": route_points[-1][1], "longitude": route_points[-1][0]}
 
 
-class RouteApiError(HomeAssistantError):
-    """Exception raised for ORS API errors."""
+class RouteCoordinator(DataUpdateCoordinator):
+    """Coordinator voor route-gebaseerde ANWB selectie."""
 
-
-class AnwbApiError(HomeAssistantError):
-    """Raised when ANWB API calls fail."""
-
-
-class RouteApi:
-    def __init__(self, hass: HomeAssistant, api_key: str, timeout: float = 10.0) -> None:
-        """Initialize the ORS API client.
-
-        Args:
-            hass: Home Assistant instance (used to get shared aiohttp session).
-            api_key: ORS API key (kept private; not logged).
-            timeout: Request timeout in seconds.
-        """
+    def __init__(self, hass, entry, tracker_id, radius, min_power_kw, ors_api_key):
         self.hass = hass
-        self.api_key = api_key
-        self._timeout = timeout
-        self._session = async_get_clientsession(hass)
+        self.entry = entry
+        self.tracker_id = tracker_id
+        self.radius = radius
+        self.min_power_kw = min_power_kw
+        self.ors_api_key = ors_api_key
+        self.route_api = RouteApi(hass, ors_api_key)
 
-    async def _request_json(
-        self,
-        method: str,
-        url: str,
-        *,
-        params: Optional[Dict] = None,
-        json: Optional[Dict] = None,
-        headers: Optional[Dict] = None,
-        retries: int = 2,
-        use_auth_header: bool = False,
-    ) -> Dict[str, Any]:
-        """Perform an HTTP request and return parsed JSON with retries for 429."""
-        req_headers = dict(headers or {})
+        super().__init__(
+            hass,
+            logger=_LOGGER,
+            name="ANWB Route Charging",
+            update_interval=None,
+        )
 
-        if use_auth_header:
-            req_headers["Authorization"] = self.api_key
+    def _get_config_value(self, key, default):
+        return self.entry.options.get(key) or self.entry.data.get(key) or default
 
-        if params is None:
-            params = {}
-        else:
-            params = dict(params)
+    def _get_entity_state(self, entity_id, default=None):
+        entity = self.hass.states.get(entity_id)
+        if entity is None:
+            return default
+        state = (entity.state or "").strip()
+        return state if state else default
 
-        if not use_auth_header and "api_key" not in params:
-            params["api_key"] = self.api_key
+    def _get_data_mode(self):
+        value = self._get_entity_state("input_select.anwb_data_mode")
+        if value in DATA_MODES:
+            return value
+        return self._get_config_value(CONF_DATA_MODE, DEFAULT_DATA_MODE)
 
-        attempt = 0
-        backoff = 1.0
+    def _get_fuel_type(self):
+        value = self._get_entity_state("input_select.anwb_fuel_type")
+        if value in FUEL_TYPES:
+            return value
+        return self._get_config_value(CONF_FUEL_TYPE, DEFAULT_FUEL_TYPE)
 
-        while True:
-            attempt += 1
+    def _extract_price_from_station(self, station, fuel_type):
+        """Extract the relevant fuel price from an ANWB fuel station object."""
+        if not isinstance(station, dict):
+            return None
+
+        # Direct price field
+        price_data = station.get("price")
+        if isinstance(price_data, dict) and price_data.get("price") is not None:
             try:
-                timeout = aiohttp.ClientTimeout(total=self._timeout)
-                async with self._session.request(method, url, params=params, json=json, headers=req_headers, timeout=timeout) as response:
-                    return await self._handle_response(response)
-            except ClientError as err:
-                _LOGGER.debug("Network error on ORS request to %s: %s", url, err)
-                raise RouteApiError(f"Network error when calling ORS: {err}") from err
-            except asyncio.TimeoutError as err:
-                _LOGGER.debug("Timeout calling ORS %s: %s", url, err)
-                raise RouteApiError("Timeout when calling ORS") from err
-            except RouteApiError as err:
-                if "429" in str(err) and attempt <= retries:
-                    _LOGGER.warning("ORS rate limited (429). Retry %d/%d after %ss", attempt, retries, backoff)
-                    await asyncio.sleep(backoff)
-                    backoff *= 2
-                    continue
-                raise
-
-    async def _handle_response(self, response: ClientResponse) -> Dict[str, Any]:
-        """Validate response status and parse JSON, raising RouteApiError on error."""
-        status = response.status
-        text_snippet = None
-        try:
-            text = await response.text()
-            text_snippet = text[:1000]
-            _LOGGER.debug("ORS response status=%s body_snippet=%s", status, text_snippet)
-        except Exception:
-            _LOGGER.debug("Unable to read response text for debug logging (status=%s).", status)
-
-        if status == 429:
-            raise RouteApiError("ORS HTTP error 429: rate limited")
-
-        if status < 200 or status >= 300:
-            raise RouteApiError(f"ORS HTTP error {status}: {text_snippet or 'no body available'}")
-
-        try:
-            data = await response.json()
-        except Exception as err:
-            raise RouteApiError(f"Failed to decode ORS JSON response: {err}. Body snippet: {text_snippet or 'none'}") from err
-
-        return data
-
-    async def geocode(self, destination: str) -> Dict[str, float]:
-        """Geocode a destination string to latitude/longitude."""
-        if "," in destination:
-            try:
-                lat, lon = destination.split(",")
-                return {"latitude": float(lat.strip()), "longitude": float(lon.strip())}
-            except ValueError:
+                return float(price_data.get("price"))
+            except (TypeError, ValueError):
                 pass
 
-        params = {"text": destination, "size": 1}
-        data = await self._request_json("GET", GEOCODE_URL, params=params, use_auth_header=False)
+        # Try common fields in ANWB responses
+        for field_name in ("fuelPrices", "prices", "fuel_price", "priceComponents"):
+            values = station.get(field_name, [])
+            if not isinstance(values, list):
+                continue
+            for item in values:
+                if not isinstance(item, dict):
+                    continue
+                code = str(item.get("code") or item.get("name") or item.get("type") or "").upper()
+                if item.get("price") is not None and self._fuel_code_matches(code, fuel_type):
+                    try:
+                        return float(item.get("price"))
+                    except (TypeError, ValueError):
+                        pass
+                components = item.get("priceComponents", [])
+                if isinstance(components, list):
+                    for component in components:
+                        if not isinstance(component, dict):
+                            continue
+                        component_code = str(component.get("code") or component.get("name") or "").upper()
+                        value = component.get("value")
+                        if value is not None and self._fuel_code_matches(component_code, fuel_type):
+                            try:
+                                return float(value)
+                            except (TypeError, ValueError):
+                                pass
 
-        features = data.get("features") or []
-        if not features:
-            raise RouteApiError(f"Destination not found: {destination}")
+        return None
 
-        geometry = features[0].get("geometry", {})
-        coords = geometry.get("coordinates")
-        if not coords or len(coords) < 2:
-            raise RouteApiError("Invalid geocode response from ORS")
+    def _fuel_code_matches(self, code, fuel_type):
+        normalized = str(code).upper().replace("-", "").replace(" ", "")
+        if fuel_type == "euro95":
+            return normalized in {"EURO95", "E95", "95", "E10", "EURO95E10"}
+        if fuel_type == "diesel":
+            return normalized in {"DIESEL", "B7", "B100"}
+        if fuel_type == "autogas":
+            return normalized in {"AUTOGAS", "LPG", "LPGAUTOGAS"}
+        return False
 
-        lon, lat = coords[0], coords[1]
-        return {"latitude": float(lat), "longitude": float(lon)}
+    async def _async_fetch_fuels(self, vehicle_lat, vehicle_lon, target_km=None):
+        if target_km and target_km < self.radius:
+            search_radius = target_km
+        else:
+            search_radius = self.radius
 
-    async def get_route(self, start_lat: float, start_lon: float, destination: str) -> Dict[str, Any]:
-        """Get driving route from start to destination."""
-        dest = await self.geocode(destination)
-        payload = {"coordinates": [[start_lon, start_lat], [dest["longitude"], dest["latitude"]]]}
-        data = await self._request_json("POST", DIRECTIONS_URL, json=payload, use_auth_header=True)
+        fuel_type = self._get_fuel_type()
+        data = await self.route_api.get_fuel_stations(vehicle_lat, vehicle_lon, search_radius)
+        stations = data.get("value", [])
 
-        features = data.get("features") or []
-        if not features:
-            raise RouteApiError("ORS directions returned no features")
+        filtered = []
+        for station in stations:
+            price = self._extract_price_from_station(station, fuel_type)
+            if price is None:
+                continue
 
-        feature = features[0]
-        properties = feature.get("properties", {})
-        summary = properties.get("summary", {})
-        distance_m = summary.get("distance")
-        duration_s = summary.get("duration")
-        coords = feature.get("geometry", {}).get("coordinates", [])
+            coords = station.get("coordinates", {}) or {}
+            lat = coords.get("latitude")
+            lon = coords.get("longitude")
+            item = {"station": station, "price": price, "power": 0, "distance_km": 0, "duration_minutes": 0}
 
-        if distance_m is None or duration_s is None:
-            raise RouteApiError("ORS directions response missing summary distance/duration")
+            if lat is not None and lon is not None:
+                try:
+                    route_to_station = await self.route_api.get_route(vehicle_lat, vehicle_lon, f"{lat},{lon}")
+                    item["distance_km"] = round(route_to_station["distance_km"], 1)
+                    item["duration_minutes"] = round(route_to_station["duration_min"], 0)
+                except Exception:
+                    item["distance_km"] = 0
+                    item["duration_minutes"] = 0
+
+            filtered.append(item)
+
+        filtered.sort(key=lambda item: item["price"])
+        filtered = filtered[:10]
 
         return {
-            "destination": destination,
-            "distance_m": float(distance_m),
-            "distance_km": round(float(distance_m) / 1000.0, 1),
-            "duration_s": float(duration_s),
-            "duration_min": round(float(duration_s) / 60.0, 1),
-            "coordinates": coords,
-            "geojson": data,
+            "route": None,
+            "chargers": filtered,
+            "fuel_stations": filtered,
+            "fuel_type": fuel_type,
+            "data_mode": "fuels",
+            "vehicle": {"latitude": vehicle_lat, "longitude": vehicle_lon},
+            "destination": None,
+            "charger_type": "fuel",
         }
 
-    async def calculate_detour(
-        self,
-        start_lat: float,
-        start_lon: float,
-        charger_lat: float,
-        charger_lon: float,
-        destination: str,
-    ) -> Dict[str, Any]:
-        """Calculate detour distance and extra time when visiting a charger on the way."""
-        direct_route = await self.get_route(start_lat, start_lon, destination)
-        dest_coords = await self.geocode(destination)
-        payload = {
-            "coordinates": [[start_lon, start_lat], [charger_lon, charger_lat], [dest_coords["longitude"], dest_coords["latitude"]]]
-        }
-        route_via = await self._request_json("POST", DIRECTIONS_URL, json=payload, use_auth_header=True)
+    async def _async_fetch_chargers(self, vehicle_lat, vehicle_lon, charger_type, destination=None, target_km=None):
+        if destination:
+            route = await self.route_api.get_route(vehicle_lat, vehicle_lon, destination)
+            search_point = point_on_route(route["coordinates"], target_km or 0)
+            search_radius = self.radius
+        else:
+            route = None
+            if target_km and target_km < self.radius:
+                search_radius = target_km
+            else:
+                search_radius = self.radius
+            search_point = {"latitude": vehicle_lat, "longitude": vehicle_lon}
 
-        features = route_via.get("features") or []
-        if not features:
-            raise RouteApiError("ORS directions (via charger) returned no features")
+        anwb_data = await self.route_api.get_chargers(search_point["latitude"], search_point["longitude"], search_radius)
+        chargers = anwb_data.get("value", [])
 
-        summary = features[0].get("properties", {}).get("summary", {})
-        if not summary:
-            raise RouteApiError("ORS directions (via charger) response missing summary")
+        filtered = []
+        for charger in chargers:
+            evses = charger.get("electricVehicleSupplyEquipment", []) or []
+            statuses = [evse.get("status") for evse in evses if isinstance(evse, dict)]
+            if "AVAILABLE" not in statuses and "CHARGING" not in statuses:
+                continue
 
-        route_via_distance_m = summary.get("distance")
-        route_via_duration_s = summary.get("duration")
+            max_power = 0
+            for evse in evses:
+                for connector in evse.get("connectors", []) or []:
+                    max_power = max(max_power, connector.get("maxPowerInKW", 0))
 
-        if route_via_distance_m is None or route_via_duration_s is None:
-            raise RouteApiError("ORS directions (via charger) missing distance/duration")
+            if charger_type == "AC laders" and max_power >= 50:
+                continue
+            elif charger_type == "Snelladers" and (max_power < 50 or max_power >= 100):
+                continue
+            elif charger_type == "Ultrasnelladers" and max_power < 100:
+                continue
 
-        detour_km = round((float(route_via_distance_m) - float(direct_route["distance_m"])) / 1000.0, 1)
-        extra_minutes = round((float(route_via_duration_s) - float(direct_route["duration_s"])) / 60.0, 1)
-
-        return {"detour_km": detour_km, "extra_minutes": extra_minutes}
-
-    @staticmethod
-    def _compute_bbox(lat: float, lon: float, radius_km: float) -> str:
-        """Compute a simple bounding box around (lat, lon) given radius in kilometers."""
-        lat_f = float(lat)
-        lon_f = float(lon)
-        radius = float(radius_km)
-
-        lat_delta = radius / 111.0
-        lon_delta = radius / (111.0 * cos(radians(lat_f)) if cos(radians(lat_f)) != 0 else 1.0)
-
-        return f"{lat_f - lat_delta},{lon_f - lon_delta},{lat_f + lat_delta},{lon_f + lon_delta}"
-
-    async def _request_anwb(
-        self,
-        url: str,
-        *,
-        retries: int = 2,
-        params: Optional[Dict[str, Any]] = None,
-        headers: Optional[Dict[str, str]] = None,
-    ) -> Dict[str, Any]:
-        """Perform a GET request to ANWB and return parsed JSON with retries."""
-        attempt = 0
-        backoff = 1.0
-
-        while True:
-            attempt += 1
-            try:
-                timeout = aiohttp.ClientTimeout(total=self._timeout)
-                async with self._session.get(url, params=params, headers=headers, timeout=timeout) as resp:
-                    status = resp.status
-                    try:
-                        text = await resp.text()
-                        snippet = (text[:1000] + "...") if len(text) > 1000 else text
-                    except Exception:
-                        snippet = "<unable to read body>"
-
-                    _LOGGER.debug("ANWB HTTP status=%s url=%s", status, url)
-
-                    if status == 429:
-                        if attempt <= retries:
-                            _LOGGER.warning("ANWB rate limited (429). Retry %d/%d in %ss", attempt, retries, backoff)
-                            await asyncio.sleep(backoff)
-                            backoff *= 2
-                            continue
-                        raise AnwbApiError("ANWB rate limited (429)")
-
-                    if 500 <= status < 600 and attempt <= retries:
-                        _LOGGER.warning("ANWB server error %s. Retry %d/%d in %ss", status, attempt, retries, backoff)
-                        await asyncio.sleep(backoff)
-                        backoff *= 2
-                        continue
-
-                    if status < 200 or status >= 300:
-                        raise AnwbApiError(f"ANWB HTTP error {status}: {snippet or 'no body'}")
-
-                    try:
-                        data = await resp.json()
-                    except Exception as err:
-                        raise AnwbApiError(f"Failed to decode ANWB JSON response: {err}. Body snippet: {snippet}") from err
-
-                    return data
-
-            except (aiohttp.ClientError, asyncio.TimeoutError) as err:
-                _LOGGER.debug("Network error calling ANWB API: %s", err)
-                if attempt <= retries:
-                    _LOGGER.warning("Network error when calling ANWB; retry %d/%d in %ss", attempt, retries, backoff)
-                    await asyncio.sleep(backoff)
-                    backoff *= 2
+            price_data = charger.get("price")
+            if price_data and price_data.get("price") is not None:
+                price = float(price_data.get("price"))
+            else:
+                energy_prices = []
+                for evse in evses:
+                    for connector in evse.get("connectors", []) or []:
+                        for tariff in connector.get("prices", []) or []:
+                            for component in tariff.get("priceComponents", []) or []:
+                                if component.get("code") == "ENERGY":
+                                    value = component.get("value")
+                                    if value is not None:
+                                        energy_prices.append(float(value))
+                if not energy_prices:
                     continue
-                raise AnwbApiError(f"Network error when calling ANWB API: {err}") from err
+                price = energy_prices[0]
 
-    async def get_chargers(self, lat: float, lon: float, radius_km: float) -> Dict[str, Any]:
-        """Fetch chargers from ANWB within the bounding box defined by lat/lon and radius_km."""
-        try:
-            lat_f = float(lat)
-            lon_f = float(lon)
-            radius_f = float(radius_km)
-        except (TypeError, ValueError) as err:
-            raise AnwbApiError(f"Invalid lat/lon/radius: {err}") from err
+            item = {"charger": charger, "price": price, "power": max_power, "distance_km": 0, "duration_minutes": 0}
+            filtered.append(item)
 
-        bbox = self._compute_bbox(lat_f, lon_f, radius_f)
-        params = {"bounding-box-filter": bbox, "type-filter": "CHARGING_LOCATION"}
-        url = str(URL(ANWB_BASE).with_query(params))
+        filtered.sort(key=lambda c: c["price"])[:]
+        filtered = filtered[:10]
 
-        data = await self._request_anwb(url)
-        if not isinstance(data, dict):
-            return {"value": []}
-        return data
+        for item in filtered:
+            charger = item["charger"]
+            coords = charger.get("coordinates", {}) or {}
+            charger_lat = coords.get("latitude")
+            charger_lon = coords.get("longitude")
+            if charger_lat is None or charger_lon is None:
+                continue
+            if destination:
+                try:
+                    detour = await self.route_api.calculate_detour(vehicle_lat, vehicle_lon, charger_lat, charger_lon, destination)
+                    item["distance_km"] = detour.get("detour_km", 0)
+                    item["duration_minutes"] = detour.get("extra_minutes", 0)
+                except Exception:
+                    item["distance_km"] = 0
+                    item["duration_minutes"] = 0
+            else:
+                try:
+                    route_to_charger = await self.route_api.get_route(vehicle_lat, vehicle_lon, f"{charger_lat},{charger_lon}")
+                    item["distance_km"] = round(route_to_charger["distance_km"], 1)
+                    item["duration_minutes"] = round(route_to_charger["duration_min"], 0)
+                except Exception:
+                    item["distance_km"] = 0
+                    item["duration_minutes"] = 0
 
-    async def get_fuel_stations(self, lat: float, lon: float, radius_km: float) -> Dict[str, Any]:
-        """Fetch fuel stations from ANWB within the bounding box defined by lat/lon and radius_km."""
-        try:
-            lat_f = float(lat)
-            lon_f = float(lon)
-            radius_f = float(radius_km)
-        except (TypeError, ValueError) as err:
-            raise AnwbApiError(f"Invalid lat/lon/radius: {err}") from err
+        return {
+            "route": route,
+            "chargers": filtered,
+            "fuel_stations": [],
+            "vehicle": {"latitude": vehicle_lat, "longitude": vehicle_lon},
+            "destination": destination,
+            "charger_type": charger_type,
+            "data_mode": "chargers",
+            "fuel_type": self._get_fuel_type(),
+        }
 
-        bbox = self._compute_bbox(lat_f, lon_f, radius_f)
-        params = {"bounding-box-filter": bbox, "type-filter": "FUEL_STATION"}
-        url = str(URL(ANWB_BASE).with_query(params))
+    async def _async_update_data(self):
+        charger_type_entity = self.hass.states.get("input_select.anwb_lader_filter")
+        charger_type = charger_type_entity.state if charger_type_entity else DEFAULT_CHARGER_TYPE
 
-        data = await self._request_anwb(url)
-        if not isinstance(data, dict):
-            return {"value": []}
-        return data
+        destination_entity = self.hass.states.get("input_text.anwb_destination")
+        destination = (destination_entity.state or "").strip() if destination_entity else ""
+
+        target_km = None
+        if destination:
+            distance_entity = self.hass.states.get("input_number.anwb_max_detour_km")
+            try:
+                target_km = float(distance_entity.state)
+            except Exception:
+                target_km = 10
+
+        tracker = self.hass.states.get(self.tracker_id)
+        if tracker is None:
+            _LOGGER.info("Tracker %s niet gevonden", self.tracker_id)
+            return {"route": None, "chargers": [], "fuel_stations": [], "data_mode": DEFAULT_DATA_MODE, "fuel_type": DEFAULT_FUEL_TYPE}
+
+        vehicle_lat = tracker.attributes.get("latitude")
+        vehicle_lon = tracker.attributes.get("longitude")
+        if vehicle_lat is None or vehicle_lon is None:
+            _LOGGER.info("GPS positie ontbreekt voor tracker %s", self.tracker_id)
+            return {"route": None, "chargers": [], "fuel_stations": [], "data_mode": DEFAULT_DATA_MODE, "fuel_type": DEFAULT_FUEL_TYPE}
+
+        data_mode = self._get_data_mode()
+        if data_mode == "fuels":
+            return await self._async_fetch_fuels(vehicle_lat, vehicle_lon, target_km)
+        if data_mode == "both":
+            chargers_data = await self._async_fetch_chargers(vehicle_lat, vehicle_lon, charger_type, destination, target_km)
+            fuels_data = await self._async_fetch_fuels(vehicle_lat, vehicle_lon, target_km)
+            combined = {
+                "route": chargers_data.get("route"),
+                "chargers": chargers_data.get("chargers", []),
+                "fuel_stations": fuels_data.get("fuel_stations", []),
+                "vehicle": chargers_data.get("vehicle", {"latitude": vehicle_lat, "longitude": vehicle_lon}),
+                "destination": destination,
+                "charger_type": charger_type,
+                "data_mode": "both",
+                "fuel_type": self._get_fuel_type(),
+            }
+            return combined
+
+        return await self._async_fetch_chargers(vehicle_lat, vehicle_lon, charger_type, destination, target_km)
+
+
+__all__ = ["RouteCoordinator", "point_on_route"]
