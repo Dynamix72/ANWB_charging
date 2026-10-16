@@ -1,25 +1,25 @@
 # ANWB Fuel & Charging
 
-Een Home Assistant custom component die zowel ANWB laadpalen als ANWB brandstofprijzen kan ophalen en tonen.
+A Home Assistant custom component that fetches and exposes both ANWB charging stations and ANWB fuel prices.
 
-Belangrijkste features
-- Laadpaal-zoekfunctie (zoals voorheen).
-- Brandstofprijzen ophalen voor stations (euro95, diesel, autogas).
-- Keuze welke data opgehaald wordt: chargers, fuels of beide.
-- Configflow met opties voor OpenRouteService API key, data mode en brandstoftype.
+Key features
+- Charging station search (as before).
+- Retrieve fuel prices for stations (Euro95, Diesel, Autogas).
+- Select which data to fetch: chargers, fuels, or both.
+- Config flow with options for an OpenRouteService API key, data mode, and fuel type.
 
-Welke ANWB API wordt gebruikt
-- Laadpalen: type-filter=CHARGING_LOCATION
-- Brandstofstations: type-filter=FUEL_STATION
+Which ANWB API is used
+- Charging stations: type-filter=CHARGING_LOCATION
+- Fuel stations: type-filter=FUEL_STATION
 
-Voor brandstofstations gebruikt de integratie de ANWB POI endpoint:
+For fuel stations the integration uses the ANWB POI endpoint:
 https://api.anwb.nl/routing/points-of-interest/v3/all?bounding-box-filter={bbox}&type-filter=FUEL_STATION
 
-Configuratie
-- Voeg de integratie toe via Integraties (config flow). Je selecteert een device_tracker (gps) en optioneel een OpenRouteService API key.
-- In de opties kun je kiezen wat je wilt ophalen (chargers/fuels/both) en welk brandstoftype je wil gebruiken.
+Configuration
+- Add the integration through Integrations (config flow). You select a device_tracker (GPS) and optionally provide an OpenRouteService API key.
+- In the options you can choose what to fetch (chargers/fuels/both) and which fuel type to use.
 
-Beschikbare entities (voorbeeld)
+Available entities (examples)
 - sensor.anwb_cheapest_charger
 - sensor.anwb_charger_count
 - sensor.anwb_top_1 ... sensor.anwb_top_10
@@ -27,10 +27,10 @@ Beschikbare entities (voorbeeld)
 - sensor.anwb_fuel_count
 - sensor.anwb_top_fuel_1 ... sensor.anwb_top_fuel_10
 
-Dashboard voorbeelden
-Zie dashboard_anwb_charging.yaml voor een Lovelace voorbeeld. Hieronder een korte toevoeging die fuel-sensors inschakelt bij de update-knop.
+Dashboard examples
+See dashboard_anwb_charging.yaml for a Lovelace example. Below is a short addition that includes the fuel sensors in the update button.
 
-In dashboard_anwb_charging.yaml zoek naar de update-knop en voeg de fuel sensors toe aan de service_data/entity_id lijst:
+In dashboard_anwb_charging.yaml find the update button and add the fuel sensors to the service_data/entity_id list:
 
   tap_action:
     action: call-service
@@ -62,12 +62,12 @@ In dashboard_anwb_charging.yaml zoek naar de update-knop en voeg de fuel sensors
         - sensor.anwb_top_fuel_9
         - sensor.anwb_top_fuel_10
 
-Extra notes
-- De integratie probeert route-afstanden te berekenen met OpenRouteService wanneer een bestemming is opgegeven. Geef je geen ORS API key, dan valt de integratie terug op enkel bounding-box zoeken [...]
-- Als je problemen hebt met rate limits van ANWB, bekijk de logs; de integratie implementeert retries en backoff voor 429/5xx responses.
+Notes
+- The integration attempts to calculate route distances using OpenRouteService when a destination is provided. If you do not supply an ORS API key, the integration falls back to bounding-box searches only.
+- If you experience rate limit issues with ANWB, check the logs; the integration implements retries and exponential backoff for 429 and 5xx responses.
 
 Repository
-- De repository is hernoemd naar: `ANWB-charging-and-fuel`. Wanneer je in documentatie of voorbeeldscripts verwijst naar de repo, gebruik de nieuwe clone-URL:
+- The repository has been renamed to `ANWB-charging-and-fuel`. When referencing the repo in documentation or example scripts, use the new clone URL:
 
 ```bash
 git clone https://github.com/Dynamix72/ANWB-charging-and-fuel.git
