@@ -63,6 +63,12 @@ In dashboard_anwb_charging.yaml zoek naar de update-knop en voeg de fuel sensors
         - sensor.anwb_top_fuel_10
 
 Extra notes
-- De integratie probeert route-afstanden te berekenen met OpenRouteService wanneer een bestemming is opgegeven. Geef je geen ORS API key, dan valt de integratie terug op enkel bounding-box zoeken (minder nauwkeurig voor route-detours).
+- De integratie probeert route-afstanden te berekenen met OpenRouteService wanneer een bestemming is opgegeven. Geef je geen ORS API key, dan valt de integratie terug op enkel bounding-box zoeken [...]
 - Als je problemen hebt met rate limits van ANWB, bekijk de logs; de integratie implementeert retries en backoff voor 429/5xx responses.
 
+Repository
+- De repository is hernoemd naar: `ANWB-charging-and-fuel`. Wanneer je in documentatie of voorbeeldscripts verwijst naar de repo, gebruik de nieuwe clone-URL:
+
+```bash
+git clone https://github.com/Dynamix72/ANWB-charging-and-fuel.git
+```
